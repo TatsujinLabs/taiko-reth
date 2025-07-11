@@ -35,6 +35,8 @@ pub struct TaikoBlockExecutionCtx<'a> {
     pub basefee_per_gas: u64,
     /// Block extra data.
     pub extra_data: Bytes,
+    /// The hash of the Anchor transaction in this block, if any.
+    pub anchor_transaction_hash: Option<B256>,
 }
 
 /// Taiko block executor factory.
@@ -122,6 +124,7 @@ where
                 withdrawals: ctx.withdrawals,
                 basefee_per_gas: ctx.basefee_per_gas,
                 extra_data: ctx.extra_data,
+                anchor_transaction_hash: ctx.anchor_transaction_hash,
             },
             &self.spec,
             &self.receipt_builder,

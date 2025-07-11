@@ -211,6 +211,7 @@ where
                     gas_limit: block_max_gas_limit * max_transactions_lists,
                     extra_data: parent.extra_data().clone(),
                     base_fee_per_gas: base_fee,
+                    anchor_transaction_hash: None,
                 },
             )
             .map_err(|_| {

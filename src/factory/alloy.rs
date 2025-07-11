@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use alloy_evm::{Database, Evm, EvmEnv, eth::EthEvmContext};
 use alloy_primitives::hex;
@@ -9,14 +6,13 @@ use reth::revm::{
     Context, ExecuteEvm, InspectEvm, Inspector,
     context::{
         BlockEnv, TxEnv,
-        result::{EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason},
+        result::{EVMError, HaltReason, ResultAndState},
     },
     primitives::{Address, Bytes, TxKind, U256, hardfork::SpecId},
 };
 use reth_evm::precompiles::PrecompilesMap;
-use tracing::debug;
 
-use crate::evm::evm::{TaikoEvm, TaikoEvmExtraContext};
+use crate::evm::evm::TaikoEvm;
 
 pub const TAIKO_GOLDEN_TOUCH_ADDRESS: [u8; 20] = hex!("0x0000777735367b36bc9b61c50022d9d0700db4ec");
 
@@ -133,32 +129,6 @@ where
         contract: Address,
         data: Bytes,
     ) -> Result<ResultAndState<Self::HaltReason>, Self::Error> {
-        // NOTE: we use this workaround to mark the Anchor transaction and base fee share percentage
-        // in this block.
-        if caller == Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) {
-            let (basefee_share_pctg, caller_nonce) = decode_anchor_system_call_data(&data).ok_or(
-                EVMError::Custom("invalid encoded anchor system call data".to_string()),
-            )?;
-            debug!(
-                "Anchor system call detected: basefee_share_pctg = {}, caller_nonce = {}",
-                basefee_share_pctg, caller_nonce
-            );
-            self.inner.extra_context =
-                TaikoEvmExtraContext::new(basefee_share_pctg, Some(caller), Some(caller_nonce));
-
-            // Return a dummy result and state to avoid further processing.
-            return Ok(ResultAndState {
-                result: ExecutionResult::Success {
-                    reason: SuccessReason::Return,
-                    gas_used: 0,
-                    gas_refunded: 0,
-                    logs: vec![],
-                    output: Output::Call(Bytes::new()),
-                },
-                state: HashMap::default(),
-            });
-        }
-
         let tx = TxEnv {
             caller,
             kind: TxKind::Call(contract),
@@ -170,8 +140,7 @@ where
             // Setting the gas price to zero enforces that no value is transferred as part of the
             // call, and that the call will not count against the block's gas limit
             gas_price: 0,
-            // The chain ID check is not relevant here and is disabled if set to None
-            chain_id: None,
+            chain_id: Some(self.chain_id()),
             // Setting the gas priority fee to None ensures the effective gas price is derived from
             // the `gas_price` field, which we need to be zero
             gas_priority_fee: None,
@@ -262,15 +231,4 @@ where
     fn inspector_mut(&mut self) -> &mut Self::Inspector {
         &mut self.inner.inner.inspector
     }
-}
-
-// Decode the anchor system call data from the given bytes, if
-// the bytes are not of the expected length or format, return None.
-fn decode_anchor_system_call_data(bytes: &Bytes) -> Option<(u64, u64)> {
-    if bytes.len() != 16 {
-        return None;
-    }
-    let basefee_share_pctg = u64::from_be_bytes(bytes[0..8].try_into().ok()?);
-    let caller_nonce = u64::from_be_bytes(bytes[8..16].try_into().ok()?);
-    Some((basefee_share_pctg, caller_nonce))
 }

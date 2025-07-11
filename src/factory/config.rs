@@ -1,8 +1,9 @@
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
+use alloy_consensus::Transaction;
 use alloy_consensus::{BlockHeader, Header};
 use alloy_evm::Database;
-use alloy_primitives::Bytes;
+use alloy_primitives::{Bytes, Uint};
 use alloy_rpc_types_eth::Withdrawals;
 use reth::{
     primitives::{BlockTy, SealedBlock, SealedHeader},
@@ -14,11 +15,13 @@ use reth::{
 use reth_ethereum::EthPrimitives;
 use reth_evm::{ConfigureEvm, EvmEnv, EvmEnvFor, EvmFactory, EvmFor};
 use reth_evm_ethereum::{RethReceiptBuilder, revm_spec, revm_spec_by_timestamp_and_block_number};
+use reth_primitives_traits::SignerRecoverable;
 
 use crate::{
     chainspec::spec::TaikoChainSpec,
-    evm::evm::TaikoEvmExtraContext,
+    evm::handler::get_treasury_address,
     factory::{
+        alloy::TAIKO_GOLDEN_TOUCH_ADDRESS,
         assembler::TaikoBlockAssembler,
         block::{TaikoBlockExecutionCtx, TaikoBlockExecutorFactory},
         factory::TaikoEvmFactory,
@@ -35,8 +38,8 @@ pub struct TaikoEvmConfig {
 
 impl TaikoEvmConfig {
     /// Creates a new Taiko EVM configuration with the given chain spec and extra context.
-    pub fn new(chain_spec: Arc<TaikoChainSpec>, extra_context: TaikoEvmExtraContext) -> Self {
-        Self::new_with_evm_factory(chain_spec, TaikoEvmFactory::new(extra_context))
+    pub fn new(chain_spec: Arc<TaikoChainSpec>) -> Self {
+        Self::new_with_evm_factory(chain_spec, TaikoEvmFactory::default())
     }
 
     /// Creates a new Taiko EVM configuration with the given chain spec and EVM factory.
@@ -88,9 +91,12 @@ impl ConfigureEvm for TaikoEvmConfig {
 
     /// Creates a new [`EvmEnv`] for the given header.
     fn evm_env(&self, header: &Header) -> EvmEnvFor<Self> {
+        // NOTE: In Taiko network, blob will never be used, so we reuse this field as
+        // the base fee share percentage.
         let cfg_env = CfgEnv::new()
             .with_chain_id(self.chain_spec().inner.chain().id())
-            .with_spec(revm_spec(&self.chain_spec().inner, header));
+            .with_spec(revm_spec(&self.chain_spec().inner, header))
+            .with_blob_max_count(decode_post_ontake_extra_data(header.extra_data.clone()));
 
         let block_env = BlockEnv {
             number: header.number(),
@@ -116,13 +122,16 @@ impl ConfigureEvm for TaikoEvmConfig {
         parent: &Header,
         attributes: &Self::NextBlockEnvCtx,
     ) -> Result<EvmEnvFor<Self>, Self::Error> {
+        // NOTE: In Taiko network, blob will never be used, so we reuse this field as
+        // the base fee share percentage.
         let cfg = CfgEnv::new()
             .with_chain_id(self.chain_spec().inner.chain().id())
             .with_spec(revm_spec_by_timestamp_and_block_number(
                 &self.chain_spec().inner,
                 attributes.timestamp,
                 parent.number + 1,
-            ));
+            ))
+            .with_blob_max_count(decode_post_ontake_extra_data(attributes.extra_data.clone()));
 
         let block_env: BlockEnv = BlockEnv {
             number: parent.number + 1,
@@ -143,6 +152,19 @@ impl ConfigureEvm for TaikoEvmConfig {
         &self,
         block: &'a SealedBlock<BlockTy<Self::Primitives>>,
     ) -> reth_evm::ExecutionCtxFor<'a, Self> {
+        let mut anchor_transaction_hash = None;
+        if let Some(first_transaction) = block.body().transactions().next() {
+            if first_transaction.try_to_recovered_ref().unwrap().signer()
+                == Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS)
+                && first_transaction.to().unwrap_or_default()
+                    == get_treasury_address(self.chain_spec().inner.chain().id())
+                && first_transaction.max_fee_per_gas()
+                    == block.header().base_fee_per_gas().unwrap() as u128
+            {
+                anchor_transaction_hash = Some(*first_transaction.hash());
+            }
+        }
+
         TaikoBlockExecutionCtx {
             parent_hash: block.header().parent_hash,
             parent_beacon_block_root: block.header().parent_beacon_block_root,
@@ -150,6 +172,7 @@ impl ConfigureEvm for TaikoEvmConfig {
             withdrawals: block.body().withdrawals.as_ref().map(Cow::Borrowed),
             basefee_per_gas: block.header().base_fee_per_gas.unwrap_or_default(),
             extra_data: block.header().extra_data.clone(),
+            anchor_transaction_hash,
         }
     }
 
@@ -167,6 +190,7 @@ impl ConfigureEvm for TaikoEvmConfig {
             withdrawals: Some(Cow::Owned(Withdrawals::new(vec![]))),
             basefee_per_gas: ctx.base_fee_per_gas,
             extra_data: ctx.extra_data.into(),
+            anchor_transaction_hash: ctx.anchor_transaction_hash,
         }
     }
 
@@ -192,4 +216,12 @@ pub struct TaikoNextBlockEnvAttributes {
     pub extra_data: Bytes,
     /// The base fee per gas for the next block.
     pub base_fee_per_gas: u64,
+    /// The hash of the Anchor transaction in this block, if any.
+    pub anchor_transaction_hash: Option<B256>,
+}
+
+// Decode the extra data from the post Ontake block to extract the base fee share percentage.
+fn decode_post_ontake_extra_data(extradata: Bytes) -> u64 {
+    let value = Uint::<256, 4>::from_be_slice(&extradata);
+    value.as_limbs()[0] as u64
 }

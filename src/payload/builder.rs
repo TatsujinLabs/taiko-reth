@@ -1,6 +1,7 @@
 use alloy_consensus::Transaction;
 use alloy_hardforks::EthereumHardforks;
 use alloy_primitives::Bytes;
+use reth::chainspec::EthChainSpec;
 use reth::{
     api::{PayloadBuilderAttributes, PayloadBuilderError},
     providers::{ChainSpecProvider, StateProviderFactory},
@@ -26,9 +27,11 @@ use reth_node_api::PayloadAttributesBuilder;
 use std::{convert::Infallible, sync::Arc};
 use tracing::{debug, trace, warn};
 
+use crate::evm::handler::get_treasury_address;
 use crate::{
     chainspec::spec::TaikoChainSpec,
     factory::{
+        alloy::TAIKO_GOLDEN_TOUCH_ADDRESS,
         assembler::TaikoBlockAssembler,
         block::TaikoBlockExecutorFactory,
         config::{TaikoEvmConfig, TaikoNextBlockEnvAttributes},
@@ -160,6 +163,16 @@ where
 
     debug!(target: "payload_builder", id=%attributes.payload_id(), parent_header = ?parent_header.hash(), parent_number = parent_header.number, attributes = ?attributes, "building payload for block");
 
+    let mut anchor_transaction_hash = None;
+    if let Some(first_transaction) = attributes.transactions.first() {
+        if first_transaction.signer() == Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS)
+            && first_transaction.signer() == get_treasury_address(client.chain_spec().chain_id())
+            && first_transaction.max_fee_per_gas() == attributes.base_fee_per_gas as u128
+        {
+            anchor_transaction_hash = Some(*first_transaction.hash());
+        }
+    }
+
     let mut builder = evm_config
         .builder_for_next_block(
             &mut db,
@@ -171,6 +184,7 @@ where
                 gas_limit: attributes.gas_limit,
                 base_fee_per_gas: attributes.base_fee_per_gas,
                 extra_data: attributes.extra_data.clone(),
+                anchor_transaction_hash,
             },
         )
         .map_err(PayloadBuilderError::other)?;

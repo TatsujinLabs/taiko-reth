@@ -4,7 +4,7 @@ use alloy_evm::{
     Database, FromRecoveredTx, FromTxWithEncoded,
     eth::{receipt_builder::ReceiptBuilder, spec::EthExecutorSpec},
 };
-use alloy_primitives::{Address, Bytes, Uint};
+use alloy_primitives::Address;
 use reth::{
     primitives::Log,
     revm::{
@@ -37,14 +37,12 @@ pub struct TaikoBlockExecutor<'a, Evm, Spec, R: ReceiptBuilder> {
     /// Utility to call system smart contracts.
     system_caller: SystemCaller<Spec>,
     /// Receipt builder.
-    receipt_builder: R,
+    pub receipt_builder: R,
 
     /// Receipts of executed transactions.
-    receipts: Vec<R::Receipt>,
+    pub receipts: Vec<R::Receipt>,
     /// Total gas used by transactions in this block.
     gas_used: u64,
-    /// The initial nonce of the golden touch address before any transactions are executed.
-    golden_touch_address_initialial_nonce: Option<u64>,
 }
 
 impl<'a, Evm, Spec, R> TaikoBlockExecutor<'a, Evm, Spec, R>
@@ -62,7 +60,6 @@ where
             system_caller: SystemCaller::new(spec.clone()),
             spec,
             receipt_builder,
-            golden_touch_address_initialial_nonce: None,
         }
     }
 }
@@ -96,35 +93,6 @@ where
 
         self.system_caller
             .apply_blockhashes_contract_call(self.ctx.parent_hash, &mut self.evm)?;
-        self.system_caller
-            .apply_beacon_root_contract_call(self.ctx.parent_beacon_block_root, &mut self.evm)?;
-
-        // Initialize the golden touch address nonce if it is not already set.
-        if self.golden_touch_address_initialial_nonce.is_none() {
-            let res = self
-                .evm
-                .db_mut()
-                .database
-                .basic(Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS))
-                .unwrap();
-
-            let mut caller_nonce = 0;
-            if let Some(info) = res {
-                caller_nonce = info.nonce;
-            }
-            self.evm
-                .transact_system_call(
-                    Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS),
-                    Address::ZERO,
-                    encode_anchor_system_call_data(
-                        // Decode the base fee share percentage from the block's extra data.
-                        decode_post_ontake_extra_data(self.ctx.extra_data.clone()),
-                        caller_nonce,
-                    ),
-                )
-                .unwrap();
-            self.golden_touch_address_initialial_nonce = Some(caller_nonce);
-        }
 
         Ok(())
     }
@@ -153,11 +121,25 @@ where
             );
         }
 
-        // Execute transaction.
-        let ResultAndState { result, state } = self
-            .evm
-            .transact(tx)
-            .map_err(|err| BlockExecutionError::evm(err, tx.tx().trie_hash()))?;
+        let ResultAndState { result, state } = if self
+            .ctx
+            .anchor_transaction_hash
+            .is_some_and(|h| tx.tx().trie_hash() == h)
+        {
+            // If the transaction is an Anchor transaction, we need to use the system call to
+            // execute it to skip the balance check and fee sharing.
+            self.evm
+                .transact_system_call(
+                    Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS),
+                    tx.tx().to().unwrap(),
+                    tx.tx().input().clone(),
+                )
+                .map_err(|err| BlockExecutionError::evm(err, tx.tx().trie_hash()))?
+        } else {
+            self.evm
+                .transact(tx)
+                .map_err(|err| BlockExecutionError::evm(err, tx.tx().trie_hash()))?
+        };
 
         if !f(&result).should_commit() {
             return Ok(None);
@@ -214,19 +196,4 @@ where
     fn evm(&self) -> &Self::Evm {
         &self.evm
     }
-}
-
-// Encode the anchor system call data for the Anchor contract sender account information
-// and the base fee share percentage.
-fn encode_anchor_system_call_data(basefee_share_pctg: u64, caller_nonce: u64) -> Bytes {
-    let mut buf = [0u8; 16];
-    buf[..8].copy_from_slice(&basefee_share_pctg.to_be_bytes());
-    buf[8..].copy_from_slice(&caller_nonce.to_be_bytes());
-    Bytes::from(buf.to_vec())
-}
-
-// Decode the extra data from the post Ontake block to extract the base fee share percentage.
-fn decode_post_ontake_extra_data(extradata: Bytes) -> u64 {
-    let value = Uint::<256, 4>::from_be_slice(&extradata);
-    value.as_limbs()[0] as u64
 }

@@ -610,6 +610,7 @@ where
                 "invalid parent base_fee_per_gas".to_string(),
             ))?,
             extra_data: parent.extra_data().clone().into(),
+            anchor_transaction_hash: None,
         })
     }
 }

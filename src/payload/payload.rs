@@ -81,7 +81,7 @@ impl PayloadBuilderAttributes for TaikoPayloadBuilderAttributes {
             .filter_map(|x| x)
             .collect::<Vec<_>>();
 
-        let res = Self {
+        Ok(Self {
             payload_attributes: payload_attributes,
             tx_list_hash: keccak256(attributes.block_metadata.tx_list.clone()),
             beneficiary: attributes.block_metadata.beneficiary,
@@ -91,12 +91,10 @@ impl PayloadBuilderAttributes for TaikoPayloadBuilderAttributes {
             base_fee_per_gas: attributes
                 .base_fee_per_gas
                 .try_into()
-                .map_err(|_| alloy_rlp::Error::Custom("invalid attributes.base_fee_per_gas"))?,
+                .map_err(|_| alloy_rlp::Error::Custom("Invalid attributes.base_fee_per_gas"))?,
             extra_data: attributes.block_metadata.extra_data,
             transactions: transactions,
-        };
-
-        Ok(res)
+        })
     }
 
     /// Returns the id for the running payload job.

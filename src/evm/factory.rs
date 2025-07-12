@@ -21,7 +21,7 @@ pub struct TaikoEvmFactory;
 impl EvmFactory for TaikoEvmFactory {
     /// The EVM type that this factory creates.
     type Evm<DB: Database, I: Inspector<EthEvmContext<DB>, EthInterpreter>> =
-        TaikoEvmWrapper<DB, I>;
+        TaikoEvmWrapper<DB, I, Self::Precompiles>;
     /// Transaction environment.
     type Tx = TxEnv;
     /// EVM error.

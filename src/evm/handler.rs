@@ -3,16 +3,21 @@ use std::str::FromStr;
 use reth::revm::{
     Database, Inspector,
     context::{
-        Block, Cfg, ContextTr, JournalOutput, JournalTr, Transaction,
+        Block, Cfg, ContextTr, JournalTr, Transaction,
         result::{HaltReason, InvalidTransaction},
     },
     handler::{
-        EvmTr, EvmTrError, Frame, FrameResult, Handler, PrecompileProvider,
+        EvmTr, EvmTrError, FrameResult, Handler, PrecompileProvider,
         instructions::InstructionProvider, pre_execution::validate_account_nonce_and_code,
     },
-    inspector::{InspectorEvmTr, InspectorFrame, InspectorHandler},
-    interpreter::{FrameInput, Gas, InterpreterResult, interpreter::EthInterpreter},
+    inspector::{InspectorEvmTr, InspectorHandler},
+    interpreter::{Gas, InterpreterResult, interpreter::EthInterpreter},
     primitives::{Address, U256},
+};
+use reth_revm::{
+    handler::{EthFrame, FrameTr},
+    interpreter::interpreter_action::FrameInit,
+    state::EvmState,
 };
 use tracing::debug;
 
@@ -43,22 +48,21 @@ impl<CTX, ERROR, FRAME> TaikoEvmHandler<CTX, ERROR, FRAME> {
 impl<EVM, ERROR, FRAME> Handler for TaikoEvmHandler<EVM, ERROR, FRAME>
 where
     EVM: EvmTr<
-            Context: ContextTr<Journal: JournalTr<FinalOutput = JournalOutput>>,
+            Context: ContextTr<Journal: JournalTr<State = EvmState>>,
             Precompiles: PrecompileProvider<EVM::Context, Output = InterpreterResult>,
             Instructions: InstructionProvider<
                 Context = EVM::Context,
                 InterpreterTypes = EthInterpreter,
             >,
+            Frame = FRAME,
         >,
     ERROR: EvmTrError<EVM>,
-    FRAME: Frame<Evm = EVM, Error = ERROR, FrameResult = FrameResult, FrameInit = FrameInput>,
+    FRAME: FrameTr<FrameResult = FrameResult, FrameInit = FrameInit>,
 {
     /// The EVM type containing Context, Instruction, and Precompiles implementations.
     type Evm = EVM;
     /// The error type returned by this handler.
     type Error = ERROR;
-    /// The Frame type containing data for frame execution. Supports Call, Create and EofCreate frames.
-    type Frame = FRAME;
     /// The halt reason type included in the output
     type HaltReason = HaltReason;
 
@@ -96,20 +100,19 @@ where
 }
 
 /// Trait that extends [`Handler`] with inspection functionality, here we just use the default implementation.
-impl<EVM, ERROR, FRAME> InspectorHandler for TaikoEvmHandler<EVM, ERROR, FRAME>
+impl<EVM, ERROR> InspectorHandler for TaikoEvmHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
             Inspector: Inspector<<<Self as Handler>::Evm as EvmTr>::Context, EthInterpreter>,
-            Context: ContextTr<Journal: JournalTr<FinalOutput = JournalOutput>>,
+            Context: ContextTr<Journal: JournalTr<State = EvmState>>,
             Precompiles: PrecompileProvider<EVM::Context, Output = InterpreterResult>,
             Instructions: InstructionProvider<
                 Context = EVM::Context,
                 InterpreterTypes = EthInterpreter,
             >,
+            Frame = EthFrame<EthInterpreter>,
         >,
     ERROR: EvmTrError<EVM>,
-    FRAME: Frame<Evm = EVM, Error = ERROR, FrameResult = FrameResult, FrameInit = FrameInput>
-        + InspectorFrame<IT = EthInterpreter>,
 {
     type IT = EthInterpreter;
 }
@@ -137,7 +140,7 @@ fn reward_beneficiary<CTX: ContextTr>(
     let tx_caller: Address = tx.caller();
     let tx_nonce = tx.nonce();
     let block_number = context.block().number();
-    let coinbase_account = context.journal().load_account(beneficiary)?;
+    let coinbase_account = context.journal_mut().load_account(beneficiary)?;
     coinbase_account.data.mark_touch();
     coinbase_account.data.info.balance =
         coinbase_account
@@ -173,7 +176,7 @@ fn reward_beneficiary<CTX: ContextTr>(
 
             let chain_id = context.cfg().chain_id();
             let treasury_account = context
-                .journal()
+                .journal_mut()
                 .load_account(get_treasury_address(chain_id))?;
 
             treasury_account.data.mark_touch();
@@ -216,7 +219,7 @@ pub fn validate_against_state_and_deduct_caller<
     let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled();
     let block = context.block().number();
 
-    let (tx, journal) = context.tx_journal();
+    let (tx, journal) = context.tx_journal_mut();
 
     // Load caller's account.
     let caller_account = journal.load_account_code(tx.caller())?.data;
@@ -224,7 +227,6 @@ pub fn validate_against_state_and_deduct_caller<
     validate_account_nonce_and_code(
         &mut caller_account.info,
         tx.nonce(),
-        tx.kind().is_call(),
         is_eip3607_disabled,
         is_nonce_check_disabled,
     )?;

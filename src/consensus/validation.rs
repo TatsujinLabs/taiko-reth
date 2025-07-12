@@ -91,7 +91,7 @@ impl<B: Block> Consensus<B> for TaikoBeaconConsensus {
     }
 }
 
-impl<H: BlockHeader> HeaderValidator<H> for TaikoBeaconConsensus
+impl<H> HeaderValidator<H> for TaikoBeaconConsensus
 where
     H: BlockHeader,
 {

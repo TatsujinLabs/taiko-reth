@@ -44,8 +44,7 @@ where
     /// Execute transaction and store state inside journal. Returns output of transaction execution.
     fn transact_one(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
         self.inner.ctx.set_tx(tx);
-        let mut handler = TaikoEvmHandler::<_, _, EthFrame>::new(self.extra_execution_ctx.clone());
-        handler.run(self)
+        TaikoEvmHandler::<_, _, EthFrame>::new(self.extra_execution_ctx.clone()).run(self)
     }
 
     /// Finalize execution, clearing the journal and returning the accumulated state changes.
@@ -53,7 +52,7 @@ where
     /// # State Management
     /// Journal is cleared and can be used for next transaction.
     fn finalize(&mut self) -> Self::State {
-        self.inner.ctx.journal_mut().finalize()
+        self.inner.journal_mut().finalize()
     }
 
     /// Transact the transaction that is set in the context, handle
@@ -63,10 +62,7 @@ where
     ) -> Result<ExecResultAndState<Self::ExecutionResult, Self::State>, Self::Error> {
         TaikoEvmHandler::<_, _, EthFrame>::new(self.extra_execution_ctx.clone())
             .run(self)
-            .map(|result| {
-                let state = self.finalize();
-                ResultAndState::new(result, state)
-            })
+            .map(|result| ResultAndState::new(result, self.finalize()))
     }
 }
 
@@ -78,7 +74,7 @@ where
     P: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
     fn commit(&mut self, state: Self::State) {
-        self.inner.ctx.db_mut().commit(state);
+        self.inner.db_mut().commit(state);
     }
 
     /// Transact the transaction and commit to the state.

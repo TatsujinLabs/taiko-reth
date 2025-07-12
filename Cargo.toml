@@ -9,6 +9,10 @@ license = "MIT"
 name = "taiko-reth"
 path = "src/bin/main.rs"
 
+[lib]
+name = "taiko_reth"
+path = "src/lib.rs"
+
 [dependencies]
 # reth
 reth = { git = "https://github.com/paradigmxyz/reth", package = "reth", tag = "v1.5.1" }

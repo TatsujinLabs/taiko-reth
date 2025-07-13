@@ -92,6 +92,7 @@ clap = "4"
 async-trait = "0.1.68"
 parity-scale-codec = "3.2.1"
 parking_lot = "0.12"
+tokio-retry = "0.3"
 tracing = { version = "0.1.0", default-features = false }
 derive_more = { version = "2", default-features = false, features = ["full"] }
 sha2 = { version = "0.10", default-features = false }

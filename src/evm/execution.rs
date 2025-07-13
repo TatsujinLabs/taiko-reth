@@ -73,13 +73,9 @@ where
     CTX: ContextSetters<Db: DatabaseCommit, Journal: JournalTr<State = EvmState>>,
     P: PrecompileProvider<CTX, Output = InterpreterResult>,
 {
+    /// Commit the state.
     fn commit(&mut self, state: Self::State) {
         self.inner.db_mut().commit(state);
-    }
-
-    /// Transact the transaction and commit to the state.
-    fn replay_commit(&mut self) -> Result<Self::ExecutionResult, Self::Error> {
-        self.inner.replay_commit()
     }
 }
 
@@ -101,8 +97,9 @@ where
         self.inner.inspector = inspector;
     }
 
+    /// Inspect the EVM with the given inspector and transaction.
     fn inspect_one_tx(&mut self, tx: Self::Tx) -> Result<Self::ExecutionResult, Self::Error> {
-        self.inner.ctx.set_tx(tx);
+        self.inner.set_tx(tx);
         TaikoEvmHandler::<_, _, EthFrame>::new(self.extra_execution_ctx.clone())
             .inspect_run(&mut self.inner)
     }

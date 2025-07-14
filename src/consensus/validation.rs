@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cmp::min, fmt::Debug, sync::Arc};
 
 use alloy_consensus::{BlockHeader as AlloyBlockHeader, EMPTY_OMMER_ROOT_HASH};
 use alloy_hardforks::EthereumHardforks;
@@ -14,28 +14,35 @@ use reth::{
 };
 use reth_node_api::NodePrimitives;
 use reth_primitives_traits::{Block, BlockHeader, GotExpected, RecoveredBlock, SealedHeader};
-use reth_provider::BlockExecutionResult;
+use reth_provider::{BlockExecutionResult, BlockReader};
 
 use crate::chainspec::{hardfork::TaikoHardforks, spec::TaikoChainSpec};
+
+const ELASTICITY_MULTIPLIER: u64 = 2;
 
 /// Taiko consensus implementation.
 ///
 /// Provides basic checks as outlined in the execution specs.
 #[derive(Debug, Clone)]
-pub struct TaikoBeaconConsensus {
+pub struct TaikoBeaconConsensus<R: BlockReader> {
     chain_spec: Arc<TaikoChainSpec>,
+    block_reader: R,
 }
 
-impl TaikoBeaconConsensus {
+impl<R: BlockReader> TaikoBeaconConsensus<R> {
     /// Create a new instance of [`TaikoBeaconConsensus`]
-    pub fn new(chain_spec: Arc<TaikoChainSpec>) -> Self {
-        Self { chain_spec }
+    pub fn new(chain_spec: Arc<TaikoChainSpec>, block_reader: R) -> Self {
+        Self {
+            chain_spec,
+            block_reader,
+        }
     }
 }
 
-impl<N> FullConsensus<N> for TaikoBeaconConsensus
+impl<N, R> FullConsensus<N> for TaikoBeaconConsensus<R>
 where
     N: NodePrimitives,
+    R: BlockReader + Debug,
 {
     /// Validate a block with regard to execution results:
     ///
@@ -50,7 +57,10 @@ where
     }
 }
 
-impl<B: Block> Consensus<B> for TaikoBeaconConsensus {
+impl<B: Block, R> Consensus<B> for TaikoBeaconConsensus<R>
+where
+    R: BlockReader + Debug,
+{
     /// The error type related to consensus.
     type Error = ConsensusError;
 
@@ -93,9 +103,10 @@ impl<B: Block> Consensus<B> for TaikoBeaconConsensus {
     }
 }
 
-impl<H> HeaderValidator<H> for TaikoBeaconConsensus
+impl<H, R> HeaderValidator<H> for TaikoBeaconConsensus<R>
 where
     H: BlockHeader,
+    R: BlockReader + Debug,
 {
     /// Validate if header is correct and follows consensus specification.
     ///
@@ -143,6 +154,7 @@ where
             header.header(),
             parent.header(),
             &self.chain_spec,
+            &self.block_reader,
         )?;
 
         Ok(())
@@ -154,14 +166,83 @@ where
 pub fn validate_against_parent_eip4936_base_fee<
     ChainSpec: EthChainSpec + EthereumHardforks + TaikoHardforks,
     H: BlockHeader,
+    R: BlockReader + Debug,
 >(
     header: &H,
-    _parent: &H,
-    _chain_spec: &ChainSpec,
+    parent: &H,
+    chain_spec: &ChainSpec,
+    block_reader: R,
 ) -> Result<(), ConsensusError> {
-    if header.base_fee_per_gas().is_none() {
-        return Err(ConsensusError::BaseFeeMissing);
+    let base_fee = header
+        .base_fee_per_gas()
+        .ok_or(ConsensusError::BaseFeeMissing)?;
+
+    if chain_spec.is_shasta_active_at_block(header.number()) {
+        let parent_block_time = if parent.number() > 2 {
+            let ancestor = block_reader
+                .block_by_hash(parent.parent_hash())
+                .map_err(|_| ConsensusError::ParentUnknown {
+                    hash: parent.parent_hash(),
+                })?
+                .ok_or(ConsensusError::ParentUnknown {
+                    hash: parent.parent_hash(),
+                })?;
+            ancestor.header().timestamp() - parent.timestamp()
+        } else {
+            12 // TODO: determine the default value
+        };
+
+        let expected = calculate_next_block_eip4936_base_fee(header, parent, parent_block_time);
+        if expected != base_fee {
+            return Err(ConsensusError::BaseFeeDiff(GotExpected {
+                expected,
+                got: base_fee,
+            }));
+        }
     }
 
     Ok(())
+}
+
+/// Calculate the base fee for the next block based on the EIP-4936 specification.
+pub fn calculate_next_block_eip4936_base_fee<H: BlockHeader>(
+    _header: &H,
+    parent: &H,
+    parent_block_time: u64,
+) -> u64 {
+    // TODO: decode the gas issued per second from `header.extradata`.
+    // Calculate the target gas by dividing the gas limit by the elasticity multiplier.
+    let gas_target = parent.gas_limit() / ELASTICITY_MULTIPLIER as u64;
+    let gas_target_adjusted = min(
+        gas_target * parent_block_time / gas_target,
+        parent.gas_limit() * 95 / 100,
+    );
+    let parent_base_fee = parent.base_fee_per_gas().unwrap();
+
+    match parent.gas_used().cmp(&gas_target) {
+        // If the gas used in the current block is equal to the gas target, the base fee remains the
+        // same (no increase).
+        core::cmp::Ordering::Equal => parent_base_fee,
+        // If the gas used in the current block is greater than the gas target, calculate a new
+        // increased base fee.
+        core::cmp::Ordering::Greater => {
+            // Calculate the increase in base fee based on the formula defined by EIP-4936.
+            parent_base_fee
+                + (core::cmp::max(
+                    // Ensure a minimum increase of 1.
+                    1,
+                    parent_base_fee as u128 * (parent.gas_used() - gas_target_adjusted) as u128
+                        / (gas_target as u128 * 8),
+                ) as u64)
+        }
+        // If the gas used in the current block is less than the gas target, calculate a new
+        // decreased base fee.
+        core::cmp::Ordering::Less => {
+            // Calculate the decrease in base fee based on the formula defined by EIP-1559.
+            parent_base_fee.saturating_sub(
+                (parent_base_fee as u128 * (gas_target_adjusted - parent.gas_used()) as u128
+                    / (gas_target as u128 * 8)) as u64,
+            )
+        }
+    }
 }

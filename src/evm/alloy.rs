@@ -141,10 +141,9 @@ where
             let (basefee_share_pctg, caller_nonce) = decode_anchor_system_call_data(&data).ok_or(
                 EVMError::Custom("invalid encoded anchor system call data".to_string()),
             )?;
-            debug!(
-                "Anchor system call detected: basefee_share_pctg = {}, caller_nonce = {}",
-                basefee_share_pctg, caller_nonce
-            );
+            debug!(target: "taiko_evm", "Anchor system call detected: basefee_share_pctg = {}, caller_nonce = {}", basefee_share_pctg, caller_nonce);
+
+            // Set the Anchor transaction information for the later EVM execution.
             self.inner
                 .with_extra_execution_context(basefee_share_pctg, caller, caller_nonce);
 
@@ -268,7 +267,8 @@ where
 
 // Decode the anchor system call data from the given bytes, if
 // the bytes are not of the expected length or format, return None.
-fn decode_anchor_system_call_data(bytes: &Bytes) -> Option<(u64, u64)> {
+#[inline]
+pub fn decode_anchor_system_call_data(bytes: &Bytes) -> Option<(u64, u64)> {
     if bytes.len() != 16 {
         return None;
     }

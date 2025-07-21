@@ -1,25 +1,53 @@
 use core::fmt;
 
 use alloy_primitives::BlockNumber;
-use alloy_rlp::BufMut;
 use reth::revm::primitives::{
     B256, U256,
     alloy_primitives::{self},
 };
-use reth_codecs::Compact;
 use reth_db_api::{TableSet, TableType, TableViewer, table::TableInfo, tables};
 use serde::{Deserialize, Serialize};
+use serde_with::{Bytes, serde_as};
 
+use crate::payload::attributes::RpcL1Origin;
+
+/// The key for the stored L1 head origin in the database.
 pub const STORED_L1_HEAD_ORIGIN_KEY: u64 = 0;
 
-/// Represents the L1 origin for a L2 block in Taiko network.
-#[derive(Debug, Default, Eq, PartialEq, Clone, Serialize, Deserialize)]
+/// Represents the L1 origin for a L2 block in Taiko network, which is saved in the database.
+#[serde_as]
+#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct StoredL1Origin {
+    /// The number of the L2 block for which this L1 origin is created.
     pub block_id: U256,
+    /// The hash of the L2 block.
     pub l2_block_hash: B256,
-    pub l1_block_height: Option<U256>,
-    pub l1_block_hash: Option<B256>,
+    /// The height of the L1 block that included the L2 block.
+    pub l1_block_height: U256,
+    /// The hash of the L1 block that included the L2 block.
+    pub l1_block_hash: B256,
+    /// The ID of the build payload arguments.
     pub build_payload_args_id: [u8; 8],
+    /// Indicates if the L2 block was included as a forced inclusion.
+    pub is_forced_inclusion: bool,
+    /// The signature of the L2 block payload.
+    #[serde_as(as = "Bytes")]
+    pub signature: [u8; 65],
+}
+
+impl From<RpcL1Origin> for StoredL1Origin {
+    // Converts an `RpcL1Origin` into a `StoredL1Origin`.
+    fn from(rpc_l1_origin: RpcL1Origin) -> Self {
+        StoredL1Origin {
+            block_id: rpc_l1_origin.block_id,
+            l2_block_hash: rpc_l1_origin.l2_block_hash,
+            l1_block_height: rpc_l1_origin.l1_block_height.unwrap_or(U256::ZERO),
+            l1_block_hash: rpc_l1_origin.l1_block_hash.unwrap_or(B256::ZERO),
+            build_payload_args_id: rpc_l1_origin.build_payload_args_id,
+            is_forced_inclusion: rpc_l1_origin.is_forced_inclusion,
+            signature: rpc_l1_origin.signature,
+        }
+    }
 }
 
 tables! {
@@ -34,117 +62,41 @@ tables! {
   }
 }
 
-// TODO: improve this implementation.
-impl Compact for StoredL1Origin {
-    /// Takes a buffer which can be written to. *Ideally*, it returns the length written to.
-    fn to_compact<B>(&self, buf: &mut B) -> usize
-    where
-        B: BufMut + AsMut<[u8]>,
-    {
-        let start_len = buf.remaining_mut();
+#[cfg(test)]
+mod test {
+    use super::*;
 
-        buf.put_slice(&self.block_id.to_be_bytes::<32>());
-        buf.put_slice(self.l2_block_hash.as_slice());
-
-        // Option<U256>
-        match &self.l1_block_height {
-            Some(val) => {
-                buf.put_u8(1);
-                buf.put_slice(&val.to_be_bytes::<32>());
-            }
-            None => {
-                buf.put_u8(0);
-            }
-        }
-
-        // Option<B256>
-        match &self.l1_block_hash {
-            Some(val) => {
-                buf.put_u8(1);
-                buf.put_slice(val.as_slice());
-            }
-            None => {
-                buf.put_u8(0);
-            }
-        }
-
-        buf.put_slice(&self.build_payload_args_id);
-
-        start_len - buf.remaining_mut()
-    }
-
-    /// Takes a buffer which can be read from. Returns the object and `buf` with its internal cursor
-    /// advanced (eg.`.advance(len)`).
-    ///
-    /// `len` can either be the `buf` remaining length, or the length of the compacted type.
-    ///
-    /// It will panic, if `len` is smaller than `buf.len()`.
-    fn from_compact(buf: &[u8], _len: usize) -> (Self, &[u8]) {
-        let mut offset = 0;
-
-        let block_id = U256::from_be_bytes::<32>(buf[offset..offset + 32].try_into().unwrap());
-        offset += 32;
-
-        let l2_block_hash = B256::from_slice(&buf[offset..offset + 32]);
-        offset += 32;
-
-        let l1_block_height = match buf[offset] {
-            0 => {
-                offset += 1;
-                None
-            }
-            1 => {
-                offset += 1;
-                let v = U256::from_be_bytes::<32>(buf[offset..offset + 32].try_into().unwrap());
-                offset += 32;
-                Some(v)
-            }
-            _ => panic!("invalid prefix for l1_block_height"),
+    #[test]
+    fn test_stored_l1_origin_from() {
+        let rpc_l1_origin = RpcL1Origin {
+            block_id: U256::random(),
+            l2_block_hash: B256::random(),
+            l1_block_height: Some(U256::random()),
+            l1_block_hash: Some(B256::from([1u8; 32])),
+            build_payload_args_id: [2u8; 8],
+            is_forced_inclusion: true,
+            signature: [3u8; 65],
         };
 
-        let l1_block_hash = match buf[offset] {
-            0 => {
-                offset += 1;
-                None
-            }
-            1 => {
-                offset += 1;
-                let v = B256::from_slice(&buf[offset..offset + 32]);
-                offset += 32;
-                Some(v)
-            }
-            _ => panic!("invalid prefix for l1_block_hash"),
-        };
-
-        let build_payload_args_id: [u8; 8] = buf[offset..offset + 8].try_into().unwrap();
-        offset += 8;
-
-        let remaining = &buf[offset..];
-
-        (
-            StoredL1Origin {
-                block_id,
-                l2_block_hash,
-                l1_block_height,
-                l1_block_hash,
-                build_payload_args_id,
-            },
-            remaining,
-        )
-    }
-}
-
-impl reth_db_api::table::Compress for StoredL1Origin {
-    type Compressed = Vec<u8>;
-
-    fn compress_to_buf<B: alloy_primitives::bytes::BufMut + AsMut<[u8]>>(&self, buf: &mut B) {
-        let _ = Compact::to_compact(self, buf);
-    }
-}
-
-impl reth_db_api::table::Decompress for StoredL1Origin {
-    fn decompress(value: &[u8]) -> Result<Self, reth_db_api::DatabaseError> {
-        let (obj, _) = Compact::from_compact(value, value.len());
-        Ok(obj)
+        let stored_l1_origin: StoredL1Origin = rpc_l1_origin.clone().into();
+        assert_eq!(stored_l1_origin.block_id, rpc_l1_origin.block_id);
+        assert_eq!(stored_l1_origin.l2_block_hash, rpc_l1_origin.l2_block_hash);
+        assert_eq!(
+            stored_l1_origin.l1_block_height,
+            U256::from(rpc_l1_origin.l1_block_height.unwrap())
+        );
+        assert_eq!(
+            stored_l1_origin.l1_block_hash,
+            B256::from(rpc_l1_origin.l1_block_hash.unwrap())
+        );
+        assert_eq!(
+            stored_l1_origin.build_payload_args_id,
+            rpc_l1_origin.build_payload_args_id
+        );
+        assert_eq!(
+            stored_l1_origin.is_forced_inclusion,
+            rpc_l1_origin.is_forced_inclusion
+        );
+        assert_eq!(stored_l1_origin.signature, rpc_l1_origin.signature);
     }
 }

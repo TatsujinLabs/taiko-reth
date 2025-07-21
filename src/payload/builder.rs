@@ -34,10 +34,12 @@ use crate::{
         factory::TaikoEvmFactory,
     },
     payload::{
-        attributes::{L1Origin, TaikoBlockMetadata, TaikoPayloadAttributes},
+        attributes::{RpcL1Origin, TaikoBlockMetadata, TaikoPayloadAttributes},
         payload::TaikoPayloadBuilderAttributes,
     },
 };
+
+const TAIKO_PACAYA_BLOCK_GAS_LIMIT: u64 = 241_000_000;
 
 /// Taiko payload builder
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,17 +228,19 @@ impl PayloadAttributesBuilder<TaikoPayloadAttributes>
             block_metadata: TaikoBlockMetadata {
                 beneficiary: Address::random(),
                 timestamp: U256::from(timestamp),
-                gas_limit: 241_000_000,
+                gas_limit: TAIKO_PACAYA_BLOCK_GAS_LIMIT,
                 mix_hash: B256::random(),
                 tx_list: Bytes::new(),
                 extra_data: Bytes::new(),
             },
-            l1_origin: L1Origin {
+            l1_origin: RpcL1Origin {
                 block_id: U256::ZERO,
                 l2_block_hash: B256::ZERO,
                 l1_block_hash: None,
                 l1_block_height: None,
                 build_payload_args_id: [0; 8],
+                is_forced_inclusion: false,
+                signature: [0; 65],
             },
         }
     }

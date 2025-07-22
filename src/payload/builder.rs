@@ -1,6 +1,7 @@
-use alloy_consensus::Transaction;
+use alloy_consensus::{BlockHeader, Header, Transaction};
 use alloy_hardforks::EthereumHardforks;
 use alloy_primitives::Bytes;
+use alloy_rpc_types_debug::ExecutionWitness;
 use reth::{
     api::{PayloadBuilderAttributes, PayloadBuilderError},
     providers::{ChainSpecProvider, StateProviderFactory},
@@ -22,7 +23,9 @@ use reth_evm::{
     execute::{BlockBuilder, BlockBuilderOutcome},
 };
 use reth_evm_ethereum::RethReceiptBuilder;
-use reth_node_api::PayloadAttributesBuilder;
+use reth_node_api::{EngineApiMessageVersion, PayloadAttributesBuilder};
+use reth_provider::{BlockReaderIdExt, HeaderProvider, StateProvider};
+use reth_revm::witness::ExecutionWitnessRecord;
 use std::{convert::Infallible, sync::Arc};
 use tracing::{debug, trace, warn};
 
@@ -50,10 +53,105 @@ pub struct TaikoPayloadBuilder<Client, EvmConfig = TaikoEvmConfig> {
     evm_config: EvmConfig,
 }
 
-impl<Client, EvmConfig> TaikoPayloadBuilder<Client, EvmConfig> {
+impl<Client, EvmConfig> TaikoPayloadBuilder<Client, EvmConfig>
+where
+    EvmConfig: ConfigureEvm<
+            Primitives = EthPrimitives,
+            Error = Infallible,
+            NextBlockEnvCtx = TaikoNextBlockEnvAttributes,
+            BlockExecutorFactory = TaikoBlockExecutorFactory<
+                RethReceiptBuilder,
+                Arc<TaikoChainSpec>,
+                TaikoEvmFactory,
+            >,
+            BlockAssembler = TaikoBlockAssembler,
+        >,
+    Client: StateProviderFactory + ChainSpecProvider<ChainSpec: EthereumHardforks> + Clone,
+{
     /// `TaikoPayloadBuilder` constructor.
     pub const fn new(client: Client, evm_config: EvmConfig) -> Self {
         Self { client, evm_config }
+    }
+
+    /// Builds the payload and returns its [`ExecutionWitness`] based on the state after execution.
+    pub fn witness(
+        self,
+        provider: impl StateProvider + BlockReaderIdExt + HeaderProvider<Header = Header> + Clone,
+        parent_block_hash: B256,
+        attributes: TaikoPayloadAttributes,
+    ) -> Result<ExecutionWitness, PayloadBuilderError> {
+        let parent = provider
+            .sealed_header_by_hash(parent_block_hash)
+            .map_err(|e| PayloadBuilderError::Internal(e.into()))?
+            .ok_or_else(|| PayloadBuilderError::MissingParentBlock(parent_block_hash))?;
+
+        let builder_attributes = TaikoPayloadBuilderAttributes::try_new(
+            parent_block_hash,
+            attributes,
+            EngineApiMessageVersion::V2 as u8,
+        )
+        .map_err(|e| PayloadBuilderError::Other(e.into()))?;
+
+        let mut db = State::builder()
+            .with_database(StateProviderDatabase::new(&provider))
+            .with_bundle_update()
+            .build();
+
+        debug!(target: "payload_witness_builder", parent_header = ?parent.hash(), parent_number = parent.number(), attributes = ?builder_attributes, "building payload witness for block");
+
+        let mut builder = self
+            .evm_config
+            .builder_for_next_block(
+                &mut db,
+                &parent,
+                TaikoNextBlockEnvAttributes {
+                    timestamp: builder_attributes.timestamp(),
+                    suggested_fee_recipient: builder_attributes.suggested_fee_recipient(),
+                    prev_randao: builder_attributes.prev_randao(),
+                    gas_limit: builder_attributes.gas_limit,
+                    base_fee_per_gas: builder_attributes.base_fee_per_gas,
+                    extra_data: builder_attributes.extra_data.clone(),
+                },
+            )
+            .map_err(PayloadBuilderError::other)?;
+
+        builder.apply_pre_execution_changes().map_err(|err| {
+            warn!(target: "payload_witness_builder", %err, "failed to apply pre-execution changes");
+            PayloadBuilderError::Internal(err.into())
+        })?;
+
+        for tx in &builder_attributes.transactions {
+            match builder.execute_transaction(tx.clone()) {
+                Ok(gas_used) => gas_used,
+                Err(BlockExecutionError::Validation(BlockValidationError::InvalidTx {
+                    error,
+                    ..
+                })) => {
+                    trace!(target: "payload_witness_builder", %error, ?tx, "skipping invalid transaction");
+                    continue;
+                }
+                // this is an error that we should treat as fatal for this attempt
+                Err(err) => return Err(PayloadBuilderError::evm(err)),
+            };
+        }
+
+        builder.finish(provider.clone())?;
+
+        debug!(target: "payload_witness_builder", parent_header = ?parent.hash(), parent_number = parent.number(), "finished building new payload witness");
+
+        let ExecutionWitnessRecord {
+            hashed_state,
+            codes,
+            keys,
+            lowest_block_number: _,
+        } = ExecutionWitnessRecord::from_executed_state(&db);
+        let state = provider.witness(Default::default(), hashed_state)?;
+        Ok(ExecutionWitness {
+            state: state.into_iter().collect(),
+            codes,
+            keys,
+            ..Default::default()
+        })
     }
 }
 

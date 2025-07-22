@@ -1,8 +1,12 @@
 //! Rust Taiko node (taiko-reth) binary executable.
+use reth::rpc::api::DebugExecutionWitnessApiServer;
 use reth::{args::RessArgs, builder::NodeHandle, ress::install_ress_subprotocol};
 use reth_rpc::eth::EthApiTypes;
 use reth_rpc::eth::RpcNodeCore;
+use reth_rpc_server_types::RethRpcModule;
 use taiko_reth::cli::TaikoCli;
+use taiko_reth::payload::builder::TaikoPayloadBuilder;
+use taiko_reth::rpc::eth::debug::TaikoDebugWitnessApi;
 use taiko_reth::rpc::eth::eth::{TaikoExt, TaikoExtApiServer};
 use taiko_reth::{
     TaikoNode,
@@ -34,6 +38,16 @@ fn main() {
                     // Extend the RPC modules with `taiko_` namespace RPCs extensions.
                     let taiko_rpc_ext = TaikoExt::new(provider.clone());
                     ctx.modules.merge_configured(taiko_rpc_ext.into_rpc())?;
+
+                    let debug_rpc_ext = TaikoDebugWitnessApi::new(
+                        provider.clone(),
+                        Box::new(ctx.node().task_executor.clone()),
+                        TaikoPayloadBuilder::new(provider.clone(), ctx.node().evm_config().clone()),
+                    );
+                    ctx.modules.merge_if_module_configured(
+                        RethRpcModule::Debug,
+                        debug_rpc_ext.into_rpc(),
+                    )?;
 
                     // Extend the RPC modules with `taikoAuth_` namespace RPCs extensions.
                     let taiko_auth_rpc_ext = TaikoAuthExt::new(

@@ -253,8 +253,8 @@ pub fn validate_against_state_and_deduct_caller<
 
     // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
     // Transfer will be done inside `*_inner` functions.
-    if !is_anchor_transaction
-        || (max_balance_spending > caller_account.info.balance && !is_balance_check_disabled)
+    if (max_balance_spending > caller_account.info.balance && !is_balance_check_disabled)
+        && !is_anchor_transaction
     {
         return Err(InvalidTransaction::LackOfFundForMaxFee {
             fee: Box::new(max_balance_spending),

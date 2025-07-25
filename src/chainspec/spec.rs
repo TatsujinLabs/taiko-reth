@@ -20,15 +20,11 @@ use reth_network_peers::NodeRecord;
 /// - The genesis block of the chain ([`Genesis`])
 /// - What hardforks are activated, and under which conditions
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Default)]
 pub struct TaikoChainSpec {
     pub inner: ChainSpec,
 }
 
-impl Default for TaikoChainSpec {
-    fn default() -> Self {
-        Self { inner: ChainSpec::default() }
-    }
-}
 
 impl From<Genesis> for TaikoChainSpec {
     /// Converts the given [`Genesis`] into a [`TaikoChainSpec`].

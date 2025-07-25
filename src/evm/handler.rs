@@ -250,9 +250,9 @@ pub fn validate_against_state_and_deduct_caller<
     }
 
     let max_balance_spending = if is_anchor_transaction {
-        tx.max_balance_spending()?
-    } else {
         U256::ZERO
+    } else {
+        tx.max_balance_spending()?
     };
 
     // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
@@ -271,9 +271,9 @@ pub fn validate_against_state_and_deduct_caller<
 
     // subtracting max balance spending with value that is going to be deducted later in the call.
     let gas_balance_spending = if is_anchor_transaction {
-        effective_balance_spending - tx.value()
-    } else {
         U256::ZERO
+    } else {
+        effective_balance_spending - tx.value()
     };
 
     let mut new_balance = caller_account

@@ -4,7 +4,8 @@ use alloy_rpc_types_eth::Withdrawal;
 use reth::revm::primitives::B256;
 use reth_payload_primitives::ExecutionPayload as ExecutionPayloadTr;
 
-/// Represents the execution data for the Taiko network, which includes the execution payload and a sidecar.
+/// Represents the execution data for the Taiko network, which includes the execution payload and a
+/// sidecar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TaikoExecutionData {
@@ -27,8 +28,8 @@ impl From<TaikoExecutionData> for ExecutionPayload {
     }
 }
 
-/// Represents the sidecar data for the Taiko execution payload, which includes the transaction hash,
-/// optional withdrawals hash, and a boolean indicating if the block is a Taiko block.
+/// Represents the sidecar data for the Taiko execution payload, which includes the transaction
+/// hash, optional withdrawals hash, and a boolean indicating if the block is a Taiko block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -78,8 +79,8 @@ impl ExecutionPayloadTr for TaikoExecutionData {
 /// This structure maps on the ExecutionPayload structure of the beacon chain spec.
 ///
 /// See also: <https://github.com/ethereum/execution-apis/blob/6709c2a795b707202e93c4f2867fa0bf2640a84f/src/engine/paris.md#executionpayloadv1>
-/// NOTE: we change `transactions` to `Option<Vec<Bytes>>` to ensure backward compatibility with the taiko-client driver
-/// behavior.
+/// NOTE: we change `transactions` to `Option<Vec<Bytes>>` to ensure backward compatibility with the
+/// taiko-client driver behavior.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -141,24 +142,24 @@ impl From<ExecutionPayloadV1> for TaikoExecutionPayloadV1 {
     }
 }
 
-impl Into<ExecutionPayloadV1> for TaikoExecutionPayloadV1 {
+impl From<TaikoExecutionPayloadV1> for ExecutionPayloadV1 {
     // Converts a `TaikoExecutionPayloadV1` into an `ExecutionPayloadV1`.
-    fn into(self) -> ExecutionPayloadV1 {
+    fn from(val: TaikoExecutionPayloadV1) -> Self {
         ExecutionPayloadV1 {
-            parent_hash: self.parent_hash,
-            fee_recipient: self.fee_recipient,
-            state_root: self.state_root,
-            receipts_root: self.receipts_root,
-            logs_bloom: self.logs_bloom,
-            prev_randao: self.prev_randao,
-            block_number: self.block_number,
-            gas_limit: self.gas_limit,
-            gas_used: self.gas_used,
-            timestamp: self.timestamp,
-            extra_data: self.extra_data,
-            base_fee_per_gas: self.base_fee_per_gas,
-            block_hash: self.block_hash,
-            transactions: self.transactions.unwrap_or_default(),
+            parent_hash: val.parent_hash,
+            fee_recipient: val.fee_recipient,
+            state_root: val.state_root,
+            receipts_root: val.receipts_root,
+            logs_bloom: val.logs_bloom,
+            prev_randao: val.prev_randao,
+            block_number: val.block_number,
+            gas_limit: val.gas_limit,
+            gas_used: val.gas_used,
+            timestamp: val.timestamp,
+            extra_data: val.extra_data,
+            base_fee_per_gas: val.base_fee_per_gas,
+            block_hash: val.block_hash,
+            transactions: val.transactions.unwrap_or_default(),
         }
     }
 }

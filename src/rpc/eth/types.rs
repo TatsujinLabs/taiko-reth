@@ -331,10 +331,7 @@ where
         // submit the transaction to the pool with a `Local` origin
         let hash = self
             .pool()
-            .add_transaction(
-                reth::transaction_pool::TransactionOrigin::Local,
-                pool_transaction,
-            )
+            .add_transaction(reth::transaction_pool::TransactionOrigin::Local, pool_transaction)
             .await
             .map_err(Self::Error::from_eth_err)?;
 

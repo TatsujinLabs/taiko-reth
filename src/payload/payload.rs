@@ -20,7 +20,7 @@ use crate::payload::attributes::TaikoPayloadAttributes;
 pub struct TaikoPayloadBuilderAttributes {
     /// Inner ethereum payload builder attributes
     pub payload_attributes: EthPayloadBuilderAttributes,
-    /// Taiko realated attributes.
+    /// Taiko related attributes.
     // The hash of the RLP-encoded transactions in the L2 block.
     pub tx_list_hash: B256,
     // The coinbase for the L2 block.
@@ -62,11 +62,7 @@ impl PayloadBuilderAttributes for TaikoPayloadBuilderAttributes {
             timestamp: attributes.payload_attributes.timestamp,
             suggested_fee_recipient: attributes.payload_attributes.suggested_fee_recipient,
             prev_randao: attributes.payload_attributes.prev_randao,
-            withdrawals: attributes
-                .payload_attributes
-                .withdrawals
-                .unwrap_or_default()
-                .into(),
+            withdrawals: attributes.payload_attributes.withdrawals.unwrap_or_default().into(),
             parent_beacon_block_root: attributes.payload_attributes.parent_beacon_block_root,
         };
 
@@ -80,18 +76,17 @@ impl PayloadBuilderAttributes for TaikoPayloadBuilderAttributes {
                 Vec::new()
             })
             .into_iter()
-            .map(|tx| match tx.try_into_recovered() {
+            .filter_map(|tx| match tx.try_into_recovered() {
                 Ok(recovered) => Some(recovered),
                 Err(e) => {
                     debug!("Failed to recover transaction: {e}, skip this invalid transaction");
                     None
                 }
             })
-            .filter_map(|x| x)
             .collect::<Vec<_>>();
 
         let res = Self {
-            payload_attributes: payload_attributes,
+            payload_attributes,
             tx_list_hash: keccak256(attributes.block_metadata.tx_list.clone()),
             beneficiary: attributes.block_metadata.beneficiary,
             gas_limit: attributes.block_metadata.gas_limit,
@@ -102,7 +97,7 @@ impl PayloadBuilderAttributes for TaikoPayloadBuilderAttributes {
                 .try_into()
                 .map_err(|_| alloy_rlp::Error::Custom("invalid attributes.base_fee_per_gas"))?,
             extra_data: attributes.block_metadata.extra_data,
-            transactions: transactions,
+            transactions,
         };
 
         Ok(res)
@@ -157,12 +152,7 @@ pub(crate) fn payload_id_taiko(
     hasher.update(parent.as_slice());
     hasher.update(&attributes.payload_attributes.timestamp.to_be_bytes()[..]);
     hasher.update(attributes.payload_attributes.prev_randao.as_slice());
-    hasher.update(
-        attributes
-            .payload_attributes
-            .suggested_fee_recipient
-            .as_slice(),
-    );
+    hasher.update(attributes.payload_attributes.suggested_fee_recipient.as_slice());
     if let Some(withdrawals) = &attributes.payload_attributes.withdrawals {
         let mut buf = Vec::new();
         withdrawals.encode(&mut buf);
@@ -201,6 +191,6 @@ mod test {
             "0xf90220b901b302f901af83028c59808083989680830f424094167001000000000000000000000000000001000180b9014448080a450000000000000000000000000000000000000000000000000000000000000028d2c559ea42da728e0d0154b95699eeac543c768755611756ab0d1ce2b0abe95600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000000000000000000000000000000000000000000000000000000000003200000000000000000000000000000000000000000000000000000000004c4b4000000000000000000000000000000000000000000000000000000000502989660000000000000000000000000000000000000000000000000000000023c3460000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000000000c080a079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798a060ad1bd4369cd9156712860a4aaf49c474fa9290bbbc600069f666de1fd28cbdf868808502540be400830186a0943edb876b8928dd168f3785576a79afa7d07dc7978080830518d5a072ae800154047cf587c08937484082b436a4a0d236bfdf731603dfe5c7580a64a054161df1ea94ec7933b643fd6fbfefbb453350a47dfe4a4ec3cd840c0c5f915c"
         )));
 
-        assert_eq!(true, with_anchor_decoded.unwrap().len() > 0);
+        assert!(!with_anchor_decoded.unwrap().is_empty());
     }
 }

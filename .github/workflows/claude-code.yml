@@ -20,8 +20,8 @@ jobs:
       - name: Claude Code Action Official
         uses: anthropics/claude-code-action@beta
         with:
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          system-prompt: |
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          custom_instructions: |
             You are a helpful code reviewer. Focus on:
             - Code quality and best practices in Rust
             - Potential bugs or issues

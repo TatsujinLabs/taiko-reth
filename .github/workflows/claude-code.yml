@@ -1,0 +1,30 @@
+name: Claude Code
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  claude-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Claude Code Action Official
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          system-prompt: |
+            You are a helpful code reviewer. Focus on:
+            - Code quality and best practices in Rust
+            - Potential bugs or issues
+            - Performance improvements
+            - Security concerns
+            - Code style and formatting
+            - Code documentation

@@ -23,6 +23,7 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: "@claude"
+          use_sticky_comment: true
           custom_instructions: |
             You are a helpful code reviewer. Focus on:
             - Code quality and best practices in Rust

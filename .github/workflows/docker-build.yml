@@ -38,7 +38,7 @@ jobs:
 
       # Push 'vX.Y.Z' and 'latest' tags on release publish
       - name: Build and push release image
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         uses: docker/build-push-action@v5
         with:
           context: .

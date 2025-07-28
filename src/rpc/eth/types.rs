@@ -1,21 +1,10 @@
-use std::{convert::Infallible, sync::Arc};
-
-use alloy_consensus::BlockHeader;
-use alloy_eips::BlockId;
-use alloy_hardforks::EthereumHardforks;
 use alloy_network::Ethereum;
 use alloy_primitives::Bytes;
-use alloy_rpc_types_eth::{TransactionReceipt, TransactionRequest};
 use jsonrpsee::tokio;
 use reth::{
-    chainspec::EthChainSpec,
-    network::NetworkInfo,
-    revm::{
-        context::TxEnv,
-        primitives::{B256, U256},
-    },
+    revm::primitives::{B256, U256},
     rpc::api::eth::{
-        FullEthApiTypes, RpcNodeCoreExt, RpcReceipt,
+        RpcNodeCoreExt,
         helpers::{
             AddDevSigners, Call, EthCall, EthFees, LoadBlock, LoadFee, LoadPendingBlock,
             LoadReceipt, LoadState, SpawnBlocking, Trace, estimate::EstimateCall,
@@ -25,19 +14,16 @@ use reth::{
         TaskSpawner,
         pool::{BlockingTaskGuard, BlockingTaskPool},
     },
-    transaction_pool::{PoolTransaction, TransactionPool},
+    transaction_pool::{PoolTransaction, TransactionOrigin, TransactionPool},
 };
-use reth_evm::{ConfigureEvm, EvmEnv, EvmFactory, SpecFor, TxEnvFor, block::BlockExecutorFactory};
-use reth_provider::{
-    BlockNumReader, BlockReader, BlockReaderIdExt, ChainSpecProvider, NodePrimitivesProvider,
-    ProviderBlock, ProviderError, ProviderHeader, ProviderReceipt, ProviderTx, ReceiptProvider,
-};
+use reth_evm::TxEnvFor;
+use reth_provider::{ProviderHeader, ProviderTx};
 use reth_rpc::{
     EthApi,
     eth::{DevSigner, EthApiTypes, RpcNodeCore},
 };
 use reth_rpc_eth_api::{
-    FromEthApiError, RpcConvert, SignableTxRequest,
+    RpcConvert, SignableTxRequest,
     helpers::{
         EthApiSpec, EthBlocks, EthSigner, EthState, EthTransactions, LoadTransaction,
         pending_block::PendingEnvBuilder, spec::SignersForApi,
@@ -177,7 +163,7 @@ impl<N, Rpc> LoadReceipt for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
 }
 
@@ -193,7 +179,7 @@ impl<N, Rpc> EthFees for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
 }
 
@@ -201,7 +187,7 @@ impl<N, Rpc> LoadFee for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
     /// Returns a handle for reading gas price.
     #[inline]
@@ -220,7 +206,7 @@ impl<N, Rpc> LoadBlock for TaikoEthApi<N, Rpc>
 where
     Self: LoadPendingBlock,
     N: RpcNodeCore,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
 }
 
@@ -228,7 +214,12 @@ impl<N, Rpc> EthCall for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, TxEnv = TxEnvFor<N::Evm>>,
+    Rpc: RpcConvert<
+            Primitives = N::Primitives,
+            Error = EthApiError,
+            TxEnv = TxEnvFor<N::Evm>,
+            Network = Ethereum,
+        >,
 {
 }
 
@@ -283,7 +274,7 @@ impl<N, Rpc> EthBlocks for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
 }
 
@@ -291,7 +282,7 @@ impl<N, Rpc> LoadPendingBlock for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Network = Ethereum>,
 {
     /// Returns a handle to the pending block.
     #[inline]
@@ -305,16 +296,16 @@ where
     }
 }
 
-impl<Provider, Pool, Network, EvmConfig> EthTransactions
-    for TaikoEthApi<Provider, Pool, Network, EvmConfig>
+impl<N, Rpc> EthTransactions for TaikoEthApi<N, Rpc>
 where
-    Self: LoadTransaction<Provider: BlockReaderIdExt>,
-    Provider: BlockReader<Transaction = ProviderTx<Self::Provider>>,
+    N: RpcNodeCore,
+    EthApiError: FromEvmError<N::Evm>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Network = Ethereum, Error = EthApiError>,
 {
     /// Returns a handle for signing data.
     #[inline]
     fn signers(&self) -> &parking_lot::RwLock<Vec<Box<dyn EthSigner<ProviderTx<Self::Provider>>>>> {
-        self.0.signers()
+        EthApiSpec::signers(&self.0)
     }
 
     /// Decodes and recovers the transaction and submits it to the pool.
@@ -329,11 +320,7 @@ where
         let pool_transaction = <Self::Pool as TransactionPool>::Transaction::from_pooled(recovered);
 
         // submit the transaction to the pool with a `Local` origin
-        let hash = self
-            .pool()
-            .add_transaction(reth::transaction_pool::TransactionOrigin::Local, pool_transaction)
-            .await
-            .map_err(Self::Error::from_eth_err)?;
+        let hash = self.pool().add_transaction(TransactionOrigin::Local, pool_transaction).await?;
 
         Ok(hash)
     }
@@ -343,7 +330,7 @@ impl<N, Rpc> LoadTransaction for TaikoEthApi<N, Rpc>
 where
     N: RpcNodeCore,
     EthApiError: FromEvmError<N::Evm>,
-    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError>,
+    Rpc: RpcConvert<Primitives = N::Primitives, Error = EthApiError, Network = Ethereum>,
 {
 }
 

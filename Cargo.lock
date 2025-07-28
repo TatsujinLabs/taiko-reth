@@ -9660,6 +9660,7 @@ dependencies = [
  "reth-rpc-eth-types",
  "reth-rpc-server-types",
  "reth-tracing",
+ "reth-transaction-pool",
  "reth-trie-common",
  "reth-trie-db",
  "revm-database-interface",

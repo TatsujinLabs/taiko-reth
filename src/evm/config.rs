@@ -2,9 +2,11 @@ use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use alloy_consensus::{BlockHeader, Header};
 use alloy_evm::Database;
+use alloy_hardforks::EthereumHardforks;
 use alloy_primitives::Bytes;
 use alloy_rpc_types_eth::Withdrawals;
 use reth::{
+    chainspec::EthChainSpec,
     primitives::{BlockTy, SealedBlock, SealedHeader},
     revm::{
         context::{BlockEnv, CfgEnv},
@@ -12,16 +14,18 @@ use reth::{
     },
 };
 use reth_ethereum::EthPrimitives;
+use reth_ethereum_forks::Hardforks;
 use reth_evm::{ConfigureEvm, EvmEnv, EvmEnvFor, EvmFactory, EvmFor};
-use reth_evm_ethereum::{RethReceiptBuilder, revm_spec, revm_spec_by_timestamp_and_block_number};
+use reth_evm_ethereum::RethReceiptBuilder;
 
 use crate::{
     block::{
         assembler::TaikoBlockAssembler,
         factory::{TaikoBlockExecutionCtx, TaikoBlockExecutorFactory},
     },
-    chainspec::spec::TaikoChainSpec,
+    chainspec::{hardfork::TaikoHardfork, spec::TaikoChainSpec},
     evm::factory::TaikoEvmFactory,
+    revm::spec::TaikoSpecId,
 };
 
 /// A complete configuration of EVM for Taiko network.
@@ -191,4 +195,42 @@ pub struct TaikoNextBlockEnvAttributes {
     pub extra_data: Bytes,
     /// The base fee per gas for the next block.
     pub base_fee_per_gas: u64,
+}
+
+/// Map the latest active hardfork at the given header to a revm [`SpecId`].
+pub fn revm_spec<C>(chain_spec: &C, header: &Header) -> TaikoSpecId
+where
+    C: EthereumHardforks + EthChainSpec + Hardforks,
+{
+    revm_spec_by_timestamp_and_block_number(chain_spec, header.timestamp, header.number)
+}
+
+/// Map the latest active hardfork at the given timestamp or block number to a revm [`SpecId`].
+pub fn revm_spec_by_timestamp_and_block_number<C>(
+    chain_spec: &C,
+    timestamp: u64,
+    block_number: u64,
+) -> TaikoSpecId
+where
+    C: EthereumHardforks + EthChainSpec + Hardforks,
+{
+    if chain_spec.fork(TaikoHardfork::Ontake).active_at_timestamp_or_number(timestamp, block_number)
+    {
+        TaikoSpecId::ONTAKE
+    } else if chain_spec
+        .fork(TaikoHardfork::Pacaya)
+        .active_at_timestamp_or_number(timestamp, block_number)
+    {
+        TaikoSpecId::PACAYA
+    } else if chain_spec
+        .fork(TaikoHardfork::Shasta)
+        .active_at_timestamp_or_number(timestamp, block_number)
+    {
+        TaikoSpecId::SHASTA
+    } else {
+        panic!(
+            "invalid hardfork chainspec: expected at least one hardfork, got {}",
+            chain_spec.display_hardforks()
+        )
+    }
 }

@@ -27,6 +27,7 @@ pub mod db;
 pub mod evm;
 pub mod network;
 pub mod payload;
+pub mod revm;
 pub mod rpc;
 
 use crate::{

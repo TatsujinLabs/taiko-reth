@@ -58,7 +58,7 @@ where
 
     /// Returns reference to transaction response builder.
     fn tx_resp_builder(&self) -> &Self::RpcConvert {
-        &self.0.tx_resp_builder()
+        self.0.tx_resp_builder()
     }
 }
 

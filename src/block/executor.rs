@@ -1,8 +1,7 @@
 use alloy_consensus::{Transaction, TxReceipt};
 use alloy_eips::{Encodable2718, eip7685::Requests};
 use alloy_evm::{
-    Database, FromRecoveredTx, FromTxWithEncoded,
-    eth::{receipt_builder::ReceiptBuilder, spec::EthExecutorSpec},
+    Database, FromRecoveredTx, FromTxWithEncoded, eth::receipt_builder::ReceiptBuilder,
 };
 use alloy_primitives::{Address, Bytes, Uint};
 use reth::{
@@ -25,6 +24,7 @@ use revm_database_interface::DatabaseCommit;
 
 use crate::{
     block::factory::TaikoBlockExecutionCtx,
+    chainspec::spec::TaikoExecutorSpec,
     evm::{alloy::TAIKO_GOLDEN_TOUCH_ADDRESS, handler::get_treasury_address},
 };
 
@@ -78,7 +78,7 @@ where
             DB = &'db mut State<DB>,
             Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>,
         >,
-    Spec: EthExecutorSpec,
+    Spec: TaikoExecutorSpec,
     R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
 {
     /// Input transaction type.
@@ -118,7 +118,11 @@ where
                     get_treasury_address(self.evm().chain_id()),
                     encode_anchor_system_call_data(
                         // Decode the base fee share percentage from the block's extra data.
-                        decode_post_ontake_extra_data(self.ctx.extra_data.clone()),
+                        if self.spec.is_ontake_active_at_block(self.evm.block().number.to()) {
+                            decode_post_ontake_extra_data(self.ctx.extra_data.clone())
+                        } else {
+                            0
+                        },
                         account_info.map_or(0, |account| account.nonce),
                     ),
                 )
@@ -217,14 +221,15 @@ where
 
 // Encode the anchor system call data for the Anchor contract sender account information
 // and the base fee share percentage.
-fn encode_anchor_system_call_data(basefee_share_pctg: u64, caller_nonce: u64) -> Bytes {
+fn encode_anchor_system_call_data(base_fee_share_pctg: u64, caller_nonce: u64) -> Bytes {
     let mut buf = [0u8; 16];
-    buf[..8].copy_from_slice(&basefee_share_pctg.to_be_bytes());
+    buf[..8].copy_from_slice(&base_fee_share_pctg.to_be_bytes());
     buf[8..].copy_from_slice(&caller_nonce.to_be_bytes());
     Bytes::from(buf.to_vec())
 }
 
-// Decode the extra data from the post Ontake block to extract the base fee share percentage.
+// Decode the extra data from the post Ontake block to extract the base fee share percentage,
+// which is stored in the first 32 bytes of the extra data.
 fn decode_post_ontake_extra_data(extradata: Bytes) -> u64 {
     let value = Uint::<256, 4>::from_be_slice(&extradata);
     value.as_limbs()[0]
@@ -240,27 +245,27 @@ mod test {
 
     #[test]
     fn test_encode_anchor_system_call_data() {
-        let basefee_share_pctg = U64::random().to::<u64>();
+        let base_fee_share_pctg = U64::random().to::<u64>();
         let caller_nonce = U64::random().to::<u64>();
-        let encoded_data = encode_anchor_system_call_data(basefee_share_pctg, caller_nonce);
+        let encoded_data = encode_anchor_system_call_data(base_fee_share_pctg, caller_nonce);
         assert_eq!(encoded_data.len(), 16);
-        assert_eq!(&encoded_data[..8], &basefee_share_pctg.to_be_bytes());
+        assert_eq!(&encoded_data[..8], &base_fee_share_pctg.to_be_bytes());
         assert_eq!(&encoded_data[8..], &caller_nonce.to_be_bytes());
 
         let decoded_data = decode_anchor_system_call_data(&encoded_data);
-        assert_eq!(decoded_data.unwrap().0, basefee_share_pctg);
+        assert_eq!(decoded_data.unwrap().0, base_fee_share_pctg);
         assert_eq!(decoded_data.unwrap().1, caller_nonce);
     }
 
     #[test]
     fn test_decode_post_ontake_extra_data() {
-        let basefee_share_pctg = U64::random().to::<u64>();
+        let base_fee_share_pctg = U64::random().to::<u64>();
 
         assert_eq!(
             decode_post_ontake_extra_data(Bytes::copy_from_slice(
-                &U256::from_limbs([basefee_share_pctg, 0, 0, 0]).to_be_bytes::<32>(),
+                &U256::from_limbs([base_fee_share_pctg, 0, 0, 0]).to_be_bytes::<32>(),
             )),
-            basefee_share_pctg
+            base_fee_share_pctg
         );
     }
 }

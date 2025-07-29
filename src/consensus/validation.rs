@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use alloy_consensus::Transaction;
-use alloy_consensus::{BlockHeader as AlloyBlockHeader, EMPTY_OMMER_ROOT_HASH};
+use alloy_consensus::{BlockHeader as AlloyBlockHeader, EMPTY_OMMER_ROOT_HASH, Transaction};
 use alloy_hardforks::EthereumHardforks;
 use alloy_primitives::{Address, U256};
 use reth::{
@@ -15,13 +14,15 @@ use reth::{
     primitives::SealedBlock,
 };
 use reth_node_api::NodePrimitives;
-use reth_primitives_traits::BlockBody;
-use reth_primitives_traits::SignedTransaction;
-use reth_primitives_traits::{Block, BlockHeader, GotExpected, RecoveredBlock, SealedHeader};
+use reth_primitives_traits::{
+    Block, BlockBody, BlockHeader, GotExpected, RecoveredBlock, SealedHeader, SignedTransaction,
+};
 use reth_provider::BlockExecutionResult;
 
-use crate::chainspec::{hardfork::TaikoHardforks, spec::TaikoChainSpec};
-use crate::evm::alloy::TAIKO_GOLDEN_TOUCH_ADDRESS;
+use crate::{
+    chainspec::{hardfork::TaikoHardforks, spec::TaikoChainSpec},
+    evm::alloy::TAIKO_GOLDEN_TOUCH_ADDRESS,
+};
 
 /// anchor(bytes32,bytes32,uint64,uint32)
 pub const ANCHOR_V1_SELECTOR: &[u8] = b"0xda69d3db";
@@ -194,9 +195,9 @@ where
         .ok_or_else(|| ConsensusError::Other("Block has no anchor transaction".into()))?;
 
     // Ensure the input data starts with one of the anchor selectors.
-    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR)
-        && !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR)
-        && !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
+    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR) &&
+        !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR) &&
+        !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
     {
         return Err(ConsensusError::Other("Block does not contain an anchor transaction".into()));
     }
@@ -241,8 +242,7 @@ where
     })?;
     if sender != Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) {
         return Err(ConsensusError::Other(format!(
-            "Anchor transaction sender must be the treasury address, got {}",
-            sender
+            "Anchor transaction sender must be the treasury address, got {sender}"
         )));
     }
 

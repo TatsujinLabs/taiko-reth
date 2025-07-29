@@ -25,11 +25,11 @@ use crate::{
 };
 
 /// anchor(bytes32,bytes32,uint64,uint32)
-pub const ANCHOR_V1_SELECTOR: &[u8] = b"0xda69d3db";
+pub const ANCHOR_V1_SELECTOR: &[u8] = &[0xda, 0x69, 0xd3, 0xdb];
 /// anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))
-pub const ANCHOR_V2_SELECTOR: &[u8] = b"0xfd85eb2d";
+pub const ANCHOR_V2_SELECTOR: &[u8] = &[0xfd, 0x85, 0xeb, 0x2d];
 /// anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])
-pub const ANCHOR_V3_SELECTOR: &[u8] = b"0x48080a45";
+pub const ANCHOR_V3_SELECTOR: &[u8] = &[0x48, 0x08, 0x0a, 0x45];
 
 /// The gas limit for the anchor transactions before Pacaya hardfork.
 pub const ANCHOR_V1_V2_GAS_LIMIT: u64 = 250_000;
@@ -188,16 +188,15 @@ where
     B: Block,
     ChainSpec: EthereumHardforks,
 {
-    let anchor_transaction = block
-        .body()
-        .transactions()
-        .first()
-        .ok_or_else(|| ConsensusError::Other("Block has no anchor transaction".into()))?;
+    let anchor_transaction = match block.body().transactions().first() {
+        Some(tx) => tx,
+        None => return Ok(()),
+    };
 
     // Ensure the input data starts with one of the anchor selectors.
-    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR) &&
-        !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR) &&
-        !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
+    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR)
+        && !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR)
+        && !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
     {
         return Err(ConsensusError::Other("Block does not contain an anchor transaction".into()));
     }
@@ -220,19 +219,19 @@ where
         )));
     }
 
-    // Ensure the gas price is equal to the block's base fee, which means
-    // the tip is zero.
-    let anchor_transaction_gas_price = anchor_transaction
-        .gas_price()
-        .ok_or_else(|| ConsensusError::Other("Anchor transaction gas price must be set".into()))?;
-    let block_base_fee = block
-        .header()
-        .base_fee_per_gas()
-        .ok_or_else(|| ConsensusError::Other("Block base fee per gas must be set".into()))?;
+    // Ensure the tip is equal to zero.
+    let anchor_transaction_tip =
+        anchor_transaction
+            .effective_tip_per_gas(block.header().base_fee_per_gas().ok_or_else(|| {
+                ConsensusError::Other("Block base fee per gas must be set".into())
+            })?)
+            .ok_or_else(|| {
+                ConsensusError::Other("Anchor transaction tip must be set to zero".into())
+            })?;
 
-    if anchor_transaction_gas_price != block_base_fee as u128 {
+    if anchor_transaction_tip != 0 {
         return Err(ConsensusError::Other(format!(
-            "Anchor transaction gas price must be equal to block base fee, got {anchor_transaction_gas_price}, expected {block_base_fee}"
+            "Anchor transaction tip must be zero, got {anchor_transaction_tip}"
         )));
     }
 

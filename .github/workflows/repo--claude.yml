@@ -60,22 +60,25 @@ jobs:
           # Allow Claude to run specific commands
           allowed_tools: |
             mcp__github__create_pull_request
-            Bash(pnpm install)
-            Bash(pnpm test:*)
-            Bash(pnpm fmt:sol)
-            Bash(pnpm snapshot:*)
-            Bash(pnpm compile:*)
-            Bash(pnpm layout:*)
-            Bash(cat *)
-            Bash(find *)
-            Bash(grep *)
-            Bash(ls *)
-            WebFetch(domain:docs.anthropic.com)
+            Bash(cargo check:*)
+            Bash(cargo clippy:*)
+            Bash(cargo fmt:*)
+            Bash(cargo update:*)
+            Bash(cargo build:*)
+            Bash(cargo bench:*)
+            Bash(cargo clean:*)
+            Bash(cargo run:*)
+            Bash(cargo test:*)
+            Bash(./target/release/taiko-reth:*)
+            Bash(git:*)
+            Bash(ls:*)
+            Bash(mv:*)
+            Bash(find:*)
+            Bash(rm:*)
+            WebFetch
           
           # Add custom instructions for Claude to customize its behavior for your project
           custom_instructions: |
-            For protocol(smart contract) changes always start in the `packages/protocol` directory.
-            You MUST run `pnpm install` first.
             You MUST follow the development workflow described in CLAUDE.md.
             You MUST make sure the tests are passing before creating a pull request.
             You MUST open a draft pull request after creating a branch.

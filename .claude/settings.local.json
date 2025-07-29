@@ -4,6 +4,8 @@
       "Bash(git:*)",
       "Bash(ls:*)",
       "Bash(mv:*)",
+      "Bash(find:*)",
+      "Bash(rm:*)",
       "WebFetch",
       "Bash(gh issue view:*)",
       "Bash(gh commit:*)",
@@ -24,9 +26,7 @@
       "Bash(cargo clean:*)",
       "Bash(cargo run:*)",
       "Bash(cargo test:*)",
-      "Bash(./target/release/taiko-reth:*)",
-      "Bash(find:*)",
-      "Bash(rm:*)"
+      "Bash(./target/release/taiko-reth:*)"
     ],
     "deny": []
   }

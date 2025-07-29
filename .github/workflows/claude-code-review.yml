@@ -5,12 +5,6 @@ on:
     # Only run the first time the PR is opened or when it is marked as ready for review
     # This is to avoid claude from automatically reviewing the PR every time there's a new commit
     types: [opened, ready_for_review]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
 
 jobs:
   claude-review:
@@ -79,17 +73,23 @@ jobs:
 
           # Optional: Add specific tools for running tests or linting
           allowed_tools: |
-            Bash(pnpm install)
-            Bash(pnpm test:*)
-            Bash(pnpm fmt:sol)
-            Bash(pnpm snapshot:*)
-            Bash(pnpm compile:*)
-            Bash(pnpm layout:*)
-            Bash(cat *)
-            Bash(find *)
-            Bash(grep *)
-            Bash(ls *)
-            WebFetch(domain:docs.anthropic.com)
+            mcp__github__create_pull_request
+            Bash(cargo check:*)
+            Bash(cargo clippy:*)
+            Bash(cargo fmt:*)
+            Bash(cargo update:*)
+            Bash(cargo build:*)
+            Bash(cargo bench:*)
+            Bash(cargo clean:*)
+            Bash(cargo run:*)
+            Bash(cargo test:*)
+            Bash(./target/release/taiko-reth:*)
+            Bash(git:*)
+            Bash(ls:*)
+            Bash(mv:*)
+            Bash(find:*)
+            Bash(rm:*)
+            WebFetch
 
           # Optional: Skip review for certain conditions
           # if: |

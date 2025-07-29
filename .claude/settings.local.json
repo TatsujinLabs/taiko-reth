@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(ls:*)",
+      "Bash(mv:*)",
+      "WebFetch",
+      "Bash(gh issue view:*)",
+      "Bash(gh commit:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(rustup:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run:*)",
+      "Bash(cargo check:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo update:*)",
+      "Bash(cargo build:*)",
+      "Bash(cargo bench:*)",
+      "Bash(cargo clean:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo test:*)",
+      "Bash(./target/release/taiko-reth:*)",
+      "Bash(find:*)"
+    ],
+    "deny": []
+  }
+}

@@ -22,9 +22,17 @@ jobs:
        (contains(github.event.pull_request.body || '', '@claude') || 
         contains(github.event.pull_request.title || '', '@claude'))) ||
       (github.event_name == 'issue_comment' && 
-       github.event.issue.pull_request && 
+       github.event.issue.pull_request != null && 
        contains(github.event.comment.body || '', '@claude'))
     steps:
+      - name: Debug trigger event
+        run: |
+          echo "Event name: ${{ github.event_name }}"
+          echo "Is PR: ${{ github.event.issue.pull_request != null }}"
+          echo "Comment body: ${{ github.event.comment.body || 'N/A' }}"
+          echo "PR body: ${{ github.event.pull_request.body || 'N/A' }}"
+          echo "PR draft: ${{ github.event.pull_request.draft || 'N/A' }}"
+          
       - name: Checkout code
         uses: actions/checkout@v4
         

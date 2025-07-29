@@ -236,8 +236,10 @@ where
     }
 
     // Ensure the sender is the treasury address.
-    let sender = anchor_transaction.try_recover().map_err(|_| {
-        ConsensusError::Other("Anchor transaction sender must be recoverable".into())
+    let sender = anchor_transaction.try_recover().map_err(|err| {
+        ConsensusError::Other(format!(
+            "Anchor transaction sender must be recoverable: {err}"
+        ))
     })?;
     if sender != Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) {
         return Err(ConsensusError::Other(format!(

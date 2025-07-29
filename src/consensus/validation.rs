@@ -198,7 +198,7 @@ where
         !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR) &&
         !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
     {
-        return Err(ConsensusError::Other("Block does not contain an anchor transaction".into()));
+        return Err(ConsensusError::Other("First transaction does not have a valid anchor selector".into()));
     }
 
     // Ensure the value is zero.

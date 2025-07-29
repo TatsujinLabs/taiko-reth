@@ -39,22 +39,34 @@ jobs:
               return;
             }
             
+            console.log(`Fetching comments for PR #${pr_number}`);
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: pr_number
             });
             
+            console.log(`Found ${comments.data.length} total comments`);
+            
             for (const comment of comments.data) {
-              if (comment.user.login === 'github-actions[bot]' && 
-                  (comment.body.includes('claude') || 
-                   comment.body.includes('Claude'))) {
-                console.log(`Deleting comment ${comment.id}`);
-                await github.rest.issues.deleteComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  comment_id: comment.id
-                });
+              console.log(`Checking comment by ${comment.user.login}: ${comment.body.substring(0, 50)}...`);
+              
+              // Check if it's a bot comment containing Claude content
+              if ((comment.user.login === 'github-actions[bot]' || 
+                   comment.user.type === 'Bot') && 
+                  (comment.body.toLowerCase().includes('claude') || 
+                   comment.body.includes('Code Review by'))) {
+                console.log(`Deleting comment ${comment.id} by ${comment.user.login}`);
+                try {
+                  await github.rest.issues.deleteComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    comment_id: comment.id
+                  });
+                  console.log(`Successfully deleted comment ${comment.id}`);
+                } catch (error) {
+                  console.error(`Failed to delete comment ${comment.id}: ${error.message}`);
+                }
               }
             }
         

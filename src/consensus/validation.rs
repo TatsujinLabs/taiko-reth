@@ -180,13 +180,12 @@ pub fn validate_against_parent_eip4936_base_fee<
 }
 
 /// Validates the anchor transaction in the block.
-pub fn validate_anchor_transaction_in_block<B, ChainSpec>(
+pub fn validate_anchor_transaction_in_block<B>(
     block: &RecoveredBlock<B>,
     chain_spec: &TaikoChainSpec,
 ) -> Result<(), ConsensusError>
 where
     B: Block,
-    ChainSpec: EthereumHardforks,
 {
     let anchor_transaction = match block.body().transactions().first() {
         Some(tx) => tx,

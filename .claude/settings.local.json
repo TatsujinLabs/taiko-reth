@@ -25,7 +25,8 @@
       "Bash(cargo run:*)",
       "Bash(cargo test:*)",
       "Bash(./target/release/taiko-reth:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

@@ -11,6 +11,10 @@ permissions:
   pull-requests: write
   issues: write
 
+concurrency:
+  group: claude-review-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   claude-review:
     runs-on: ubuntu-latest
@@ -26,6 +30,17 @@ jobs:
        contains(github.event.comment.body || '', '@claude'))
     
     steps:
+      - name: Log trigger details
+        run: |
+          echo "=== CLAUDE WORKFLOW TRIGGERED ==="
+          echo "Event: ${{ github.event_name }}"
+          echo "PR Number: ${{ github.event.pull_request.number || github.event.issue.number }}"
+          echo "PR Draft: ${{ github.event.pull_request.draft || 'N/A' }}"
+          echo "Comment: ${{ github.event.comment.body || 'N/A' }}"
+          echo "Is PR: ${{ github.event.issue.pull_request != null }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "================================"
+          
       - name: Checkout code
         uses: actions/checkout@v4
         with:
@@ -55,32 +70,36 @@ jobs:
               let shouldDelete = false;
               let reason = '';
               
-              // Delete all previous Claude bot comments
-              if (comment.user.type === 'Bot' && 
-                  (comment.body.includes('Code Review by Claude') || 
-                   comment.body.includes('claude') || 
-                   comment.user.login === 'github-actions[bot]')) {
+              // Delete only Claude bot review comments (not all bot comments)
+              if (comment.user.login === 'github-actions[bot]' && 
+                  comment.body.includes('## Code Review by Claude')) {
                 shouldDelete = true;
                 reason = 'previous Claude review';
               }
               
-              // If triggered by a comment, delete the trigger comment
+              // Delete short trigger comments only
               if (context.eventName === 'issue_comment' && 
-                  comment.id === context.payload.comment.id) {
+                  comment.id === context.payload.comment.id &&
+                  comment.body.trim().length < 100 &&
+                  !comment.body.includes('\n\n')) {
                 shouldDelete = true;
-                reason = 'trigger comment';
+                reason = 'short trigger comment';
               }
               
               if (shouldDelete) {
                 console.log(`Deleting ${reason}: comment ${comment.id}`);
                 try {
+                  // Add a small delay to ensure GitHub processes the event
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  
                   await github.rest.issues.deleteComment({
                     owner: context.repo.owner,
                     repo: context.repo.repo,
                     comment_id: comment.id
                   });
+                  console.log(`Successfully deleted comment ${comment.id}`);
                 } catch (error) {
-                  console.error(`Failed to delete comment: ${error.message}`);
+                  console.error(`Failed to delete comment ${comment.id}: ${error.message}`);
                 }
               }
             }

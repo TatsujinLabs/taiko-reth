@@ -26,7 +26,8 @@
       "Bash(cargo clean:*)",
       "Bash(cargo run:*)",
       "Bash(cargo test:*)",
-      "Bash(./target/release/taiko-reth:*)"
+      "Bash(./target/release/taiko-reth:*)",
+      "Bash(gh workflow view:*)"
     ],
     "deny": []
   }

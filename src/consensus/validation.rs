@@ -193,9 +193,9 @@ where
     };
 
     // Ensure the input data starts with one of the anchor selectors.
-    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR) &&
-        !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR) &&
-        !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
+    if ![ANCHOR_V1_SELECTOR, ANCHOR_V2_SELECTOR, ANCHOR_V3_SELECTOR]
+        .iter()
+        .any(|&selector| anchor_transaction.input().starts_with(selector))
     {
         return Err(ConsensusError::Other("First transaction does not have a valid anchor selector".into()));
     }

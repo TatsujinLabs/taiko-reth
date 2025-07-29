@@ -8,15 +8,17 @@ use reth::{
     },
     providers::EthStorage,
 };
+use reth_engine_local::LocalPayloadAttributesBuilder;
 use reth_ethereum::EthPrimitives;
 use reth_evm::ConfigureEvm;
 use reth_evm_ethereum::RethReceiptBuilder;
-use reth_node_api::{AddOnsContext, NodeAddOns};
+use reth_node_api::{AddOnsContext, NodeAddOns, PayloadAttributesBuilder, PayloadTypes};
 use reth_node_builder::{
     NodeAdapter, NodeComponentsBuilder,
     rpc::{EngineValidatorAddOn, EngineValidatorBuilder, RethRpcAddOns, RpcAddOns, RpcHandle},
 };
 use reth_node_ethereum::node::EthereumPoolBuilder;
+use reth_rpc::eth::core::EthRpcConverterFor;
 use reth_trie_db::MerklePatriciaTrie;
 
 pub mod block;
@@ -152,7 +154,7 @@ where
     EV: EngineValidatorBuilder<N>,
 {
     /// Handle to add-ons.
-    type Handle = RpcHandle<N, TaikoEthApi<N::Provider, N::Pool, N::Network, N::Evm>>;
+    type Handle = RpcHandle<N, TaikoEthApi<N, EthRpcConverterFor<N>>>;
 
     /// Configures and launches the add-ons.
     async fn launch_add_ons(
@@ -188,7 +190,7 @@ where
     EV: EngineValidatorBuilder<N>,
 {
     /// eth API implementation.
-    type EthApi = TaikoEthApi<N::Provider, N::Pool, N::Network, N::Evm>;
+    type EthApi = TaikoEthApi<N, EthRpcConverterFor<N>>;
 
     /// Returns a mutable reference to RPC hooks.
     fn hooks_mut(&mut self) -> &mut reth_node_builder::rpc::RpcHooks<N, Self::EthApi> {
@@ -225,10 +227,7 @@ where
 
     /// Creates the engine validator for an engine API based node.
     async fn engine_validator(&self, ctx: &AddOnsContext<'_, N>) -> eyre::Result<Self::Validator> {
-        TaikoEngineValidatorBuilder::default()
-            .build(ctx)
-            .await
-            .map_err(eyre::Error::from)
+        TaikoEngineValidatorBuilder::default().build(ctx).await
     }
 }
 
@@ -266,10 +265,8 @@ where
             .node_types()
             .pool(EthereumPoolBuilder::default())
             .executor(TaikoExecutorBuilder::default())
-            .payload(BasicPayloadServiceBuilder::new(
-                TaikoPayloadBuilderBuilder::default(),
-            ))
-            .network(TaikoNetworkBuilder::default())
+            .payload(BasicPayloadServiceBuilder::new(TaikoPayloadBuilderBuilder))
+            .network(TaikoNetworkBuilder)
             .consensus(TaikoConsensusBuilder::default())
     }
 
@@ -303,5 +300,19 @@ impl<
     /// Converts an RPC block to a primitive block.
     fn rpc_to_primitive_block(rpc_block: Self::RpcBlock) -> reth_ethereum_primitives::Block {
         rpc_block.into_consensus().convert_transactions()
+    }
+
+    /// Creates a payload attributes builder for local mining in dev mode.
+    ///
+    ///  It will be used by the `LocalMiner` when dev mode is enabled.
+    ///
+    /// The builder is responsible for creating the payload attributes that define how blocks should
+    /// be constructed during local mining.
+    fn local_payload_attributes_builder(
+        chain_spec: &Self::ChainSpec,
+    ) -> impl PayloadAttributesBuilder<
+        <<Self as reth_node_api::NodeTypes>::Payload as PayloadTypes>::PayloadAttributes,
+    > {
+        LocalPayloadAttributesBuilder::new(Arc::new(chain_spec.clone()))
     }
 }

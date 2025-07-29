@@ -5,12 +5,12 @@ use alloy_eips::Encodable2718;
 use alloy_evm::{
     Database, EvmFactory, FromRecoveredTx, FromTxWithEncoded,
     block::{BlockExecutorFactory, BlockExecutorFor},
-    eth::{receipt_builder::ReceiptBuilder, spec::EthExecutorSpec},
+    eth::receipt_builder::ReceiptBuilder,
 };
 use alloy_primitives::{B256, Bytes};
 use alloy_rpc_types_eth::Withdrawals;
-use reth::builder::components::ExecutorBuilder;
 use reth::{
+    builder::components::ExecutorBuilder,
     primitives::Log,
     revm::{Inspector, State},
 };
@@ -21,7 +21,7 @@ use reth_node_builder::BuilderContext;
 
 use crate::{
     block::executor::TaikoBlockExecutor,
-    chainspec::spec::TaikoChainSpec,
+    chainspec::spec::{TaikoChainSpec, TaikoExecutorSpec},
     evm::{config::TaikoEvmConfig, factory::TaikoEvmFactory},
     payload::engine::TaikoEngineTypes,
 };
@@ -62,11 +62,7 @@ impl<R, Spec, EvmFactory> TaikoBlockExecutorFactory<R, Spec, EvmFactory> {
     /// Creates a new [`EthBlockExecutorFactory`] with the given spec, [`EvmFactory`], and
     /// [`ReceiptBuilder`].
     pub const fn new(receipt_builder: R, spec: Spec, evm_factory: EvmFactory) -> Self {
-        Self {
-            receipt_builder,
-            spec,
-            evm_factory,
-        }
+        Self { receipt_builder, spec, evm_factory }
     }
 
     /// Exposes the receipt builder.
@@ -88,7 +84,7 @@ impl<R, Spec, EvmFactory> TaikoBlockExecutorFactory<R, Spec, EvmFactory> {
 impl<R, Spec, EvmF> BlockExecutorFactory for TaikoBlockExecutorFactory<R, Spec, EvmF>
 where
     R: ReceiptBuilder<Transaction: Transaction + Encodable2718, Receipt: TxReceipt<Log = Log>>,
-    Spec: EthExecutorSpec,
+    Spec: TaikoExecutorSpec,
     EvmF: EvmFactory<Tx: FromRecoveredTx<R::Transaction> + FromTxWithEncoded<R::Transaction>>,
     Self: 'static,
 {

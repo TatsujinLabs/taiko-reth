@@ -86,17 +86,8 @@ where
         // In Taiko network, ommer hash is always empty.
         if block.ommers_hash() != EMPTY_OMMER_ROOT_HASH {
             return Err(ConsensusError::BodyOmmersHashDiff(
-                GotExpected {
-                    got: block.ommers_hash(),
-                    expected: block.ommers_hash(),
-                }
-                .into(),
+                GotExpected { got: block.ommers_hash(), expected: block.ommers_hash() }.into(),
             ));
-        }
-
-        // Check transaction root
-        if let Err(error) = block.ensure_transaction_root_valid() {
-            return Err(ConsensusError::BodyTransactionRootDiff(error.into()));
         }
 
         Ok(())
@@ -266,7 +257,7 @@ mod test {
         assert!(
             validate_against_parent_eip4936_base_fee(
                 &header,
-                &parent_header,
+                parent_header,
                 &Arc::new(TaikoChainSpec::default())
             )
             .is_err()
@@ -276,7 +267,7 @@ mod test {
         assert!(
             validate_against_parent_eip4936_base_fee(
                 &header,
-                &parent_header,
+                parent_header,
                 &Arc::new(TaikoChainSpec::default())
             )
             .is_ok()
@@ -312,9 +303,7 @@ mod test {
         header.extra_data = Bytes::from(vec![0; MAXIMUM_EXTRA_DATA_SIZE + 1]);
         assert_eq!(
             consensus.validate_header(&SealedHeader::new(header.clone(), header.hash_slow())),
-            Err(ConsensusError::ExtraDataExceedsMax {
-                len: MAXIMUM_EXTRA_DATA_SIZE + 1,
-            })
+            Err(ConsensusError::ExtraDataExceedsMax { len: MAXIMUM_EXTRA_DATA_SIZE + 1 })
         );
         header.extra_data = Bytes::from(vec![0; MAXIMUM_EXTRA_DATA_SIZE]);
 
@@ -350,11 +339,7 @@ mod test {
                 &SealedHeader::new(parent.clone(), parent.hash_slow())
             ),
             Err(ConsensusError::ParentHashMismatch(
-                GotExpected {
-                    got: header.parent_hash,
-                    expected: parent.hash_slow(),
-                }
-                .into()
+                GotExpected { got: header.parent_hash, expected: parent.hash_slow() }.into()
             ))
         );
 

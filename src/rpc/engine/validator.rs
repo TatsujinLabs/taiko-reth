@@ -1,5 +1,5 @@
 use alloy_consensus::{BlockHeader, EMPTY_ROOT_HASH, Header};
-use alloy_rpc_types_engine::PayloadError;
+use alloy_rpc_types_engine::{ExecutionPayloadV1, PayloadError};
 use reth::primitives::RecoveredBlock;
 use reth_ethereum::{Block, EthPrimitives};
 use reth_evm::ConfigureEvm;
@@ -84,15 +84,12 @@ impl PayloadValidator for TaikoEngineValidator {
         &self,
         payload: Self::ExecutionData,
     ) -> Result<RecoveredBlock<Self::Block>, NewPayloadError> {
-        let TaikoExecutionData {
-            execution_payload: payload,
-            taiko_sidecar,
-        } = payload;
+        let TaikoExecutionData { execution_payload: payload, taiko_sidecar } = payload;
 
         let expected_hash = payload.block_hash;
 
         // First parse the block.
-        let mut block = payload.try_into_block()?;
+        let mut block = Into::<ExecutionPayloadV1>::into(payload).try_into_block()?;
         if !taiko_sidecar.tx_hash.is_zero() {
             block.header.transactions_root = taiko_sidecar.tx_hash;
         }
@@ -114,9 +111,7 @@ impl PayloadValidator for TaikoEngineValidator {
             .map_err(|e| NewPayloadError::Other(e.into()));
         }
 
-        sealed_block
-            .try_recover()
-            .map_err(|e| NewPayloadError::Other(e.into()))
+        sealed_block.try_recover().map_err(|e| NewPayloadError::Other(e.into()))
     }
 }
 
@@ -131,7 +126,8 @@ where
         _: EngineApiMessageVersion,
         _: PayloadOrAttributes<'_, Self::ExecutionData, TaikoPayloadAttributes>,
     ) -> Result<(), EngineObjectValidationError> {
-        // No need to validate validate_withdrawals_presence and validate_parent_beacon_block_root_presence
+        // No need to validate validate_withdrawals_presence and
+        // validate_parent_beacon_block_root_presence
         Ok(())
     }
 
@@ -141,7 +137,8 @@ where
         _: EngineApiMessageVersion,
         _: &TaikoPayloadAttributes,
     ) -> Result<(), EngineObjectValidationError> {
-        // No need to validate validate_withdrawals_presence and validate_parent_beacon_block_root_presence
+        // No need to validate validate_withdrawals_presence and
+        // validate_parent_beacon_block_root_presence
         Ok(())
     }
 
@@ -151,8 +148,8 @@ where
         attributes: &TaikoPayloadAttributes,
         header: &Header,
     ) -> Result<(), InvalidPayloadAttributesError> {
-        // We allow the payload attributes to have a timestamp that is equal to the parent header's timestamp
-        // in Taiko network.
+        // We allow the payload attributes to have a timestamp that is equal to the parent header's
+        // timestamp in Taiko network.
         if attributes.payload_attributes.timestamp() < header.timestamp() {
             return Err(InvalidPayloadAttributesError::InvalidTimestamp);
         }

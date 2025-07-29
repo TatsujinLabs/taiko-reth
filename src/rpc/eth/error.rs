@@ -14,7 +14,7 @@ impl From<TaikoApiError> for jsonrpsee_types::error::ErrorObject<'static> {
         match error {
             TaikoApiError::GethNotFound => rpc_error_with_code(
                 EthRpcErrorCode::ResourceNotFound.code(),
-                format!("not found"),
+                "not found".to_string(),
             ),
         }
     }

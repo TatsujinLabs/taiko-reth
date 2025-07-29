@@ -31,21 +31,18 @@ impl<CTX: ContextTr, INSP, P> TaikoEvm<CTX, INSP, P> {
             EthFrame<EthInterpreter>,
         >,
     ) -> Self {
-        Self {
-            inner,
-            extra_execution_ctx: None,
-        }
+        Self { inner, extra_execution_ctx: None }
     }
 
     #[inline]
     pub fn with_extra_execution_context(
         &mut self,
-        basefee_share_pctg: u64,
+        base_fee_share_pctg: u64,
         anchor_caller_address: Address,
         anchor_caller_nonce: u64,
     ) {
         self.extra_execution_ctx = Some(TaikoEvmExtraExecutionCtx {
-            basefee_share_pctg,
+            base_fee_share_pctg,
             anchor_caller_address,
             anchor_caller_nonce,
         });
@@ -134,7 +131,7 @@ where
 /// context for Anchor transaction pre-execution checks and base fee sharing.
 #[derive(Debug, Clone, Default)]
 pub struct TaikoEvmExtraExecutionCtx {
-    basefee_share_pctg: u64,
+    base_fee_share_pctg: u64,
     anchor_caller_address: Address,
     anchor_caller_nonce: u64,
 }
@@ -142,21 +139,17 @@ pub struct TaikoEvmExtraExecutionCtx {
 impl TaikoEvmExtraExecutionCtx {
     /// Creates a new instance of [`TaikoEvmExecutionExtraCtx`].
     pub fn new(
-        basefee_share_pctg: u64,
+        base_fee_share_pctg: u64,
         anchor_caller_address: Address,
         anchor_caller_nonce: u64,
     ) -> Self {
-        Self {
-            basefee_share_pctg,
-            anchor_caller_address,
-            anchor_caller_nonce,
-        }
+        Self { base_fee_share_pctg, anchor_caller_address, anchor_caller_nonce }
     }
 
     /// Returns the base fee share percentage.
     #[inline]
-    pub fn basefee_share_pctg(&self) -> u64 {
-        self.basefee_share_pctg
+    pub fn base_fee_share_pctg(&self) -> u64 {
+        self.base_fee_share_pctg
     }
 
     /// Returns the anchor caller address.
@@ -177,10 +170,10 @@ mod test {
     use alloy_primitives::{U64, U256};
     use reth_revm::{
         Context, ExecuteEvm, MainBuilder, MainContext, context::TxEnv, db::InMemoryDB,
-        state::AccountInfo,
+        interpreter::Host, state::AccountInfo,
     };
 
-    use crate::evm::alloy::TAIKO_GOLDEN_TOUCH_ADDRESS;
+    use crate::evm::{alloy::TAIKO_GOLDEN_TOUCH_ADDRESS, handler::get_treasury_address};
 
     use super::*;
 
@@ -191,11 +184,7 @@ mod test {
         let mut db = InMemoryDB::default();
         db.insert_account_info(
             golden_touch_address,
-            AccountInfo {
-                nonce,
-                balance: U256::from(0),
-                ..Default::default()
-            },
+            AccountInfo { nonce, balance: U256::from(0), ..Default::default() },
         );
 
         let mut taiko_evm = TaikoEvm::new(Context::mainnet().with_db(db).build_mainnet());
@@ -222,17 +211,14 @@ mod test {
         );
         assert!(state.is_err());
 
-        taiko_evm.extra_execution_ctx = Some(TaikoEvmExtraExecutionCtx::new(
-            50,
-            golden_touch_address,
-            nonce + 1,
-        ));
+        taiko_evm.extra_execution_ctx =
+            Some(TaikoEvmExtraExecutionCtx::new(50, golden_touch_address, nonce + 1));
         state = taiko_evm.transact_one(
             TxEnv::builder()
                 .gas_limit(1_000_000)
                 .gas_price(1)
                 .caller(golden_touch_address)
-                .to(golden_touch_address)
+                .to(get_treasury_address(taiko_evm.ctx_ref().chain_id().to()))
                 .nonce(nonce + 1)
                 .build()
                 .unwrap(),

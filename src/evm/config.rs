@@ -14,6 +14,7 @@ use reth::{
 use reth_ethereum::EthPrimitives;
 use reth_evm::{ConfigureEvm, EvmEnv, EvmEnvFor, EvmFactory, EvmFor};
 use reth_evm_ethereum::{RethReceiptBuilder, revm_spec, revm_spec_by_timestamp_and_block_number};
+use reth_rpc_eth_api::helpers::pending_block::BuildPendingEnv;
 
 use crate::{
     block::{
@@ -35,7 +36,7 @@ pub struct TaikoEvmConfig {
 impl TaikoEvmConfig {
     /// Creates a new Taiko EVM configuration with the given chain spec and extra context.
     pub fn new(chain_spec: Arc<TaikoChainSpec>) -> Self {
-        Self::new_with_evm_factory(chain_spec, TaikoEvmFactory::default())
+        Self::new_with_evm_factory(chain_spec, TaikoEvmFactory)
     }
 
     /// Creates a new Taiko EVM configuration with the given chain spec and EVM factory.
@@ -115,13 +116,13 @@ impl ConfigureEvm for TaikoEvmConfig {
         parent: &Header,
         attributes: &Self::NextBlockEnvCtx,
     ) -> Result<EvmEnvFor<Self>, Self::Error> {
-        let cfg = CfgEnv::new()
-            .with_chain_id(self.chain_spec().inner.chain().id())
-            .with_spec(revm_spec_by_timestamp_and_block_number(
+        let cfg = CfgEnv::new().with_chain_id(self.chain_spec().inner.chain().id()).with_spec(
+            revm_spec_by_timestamp_and_block_number(
                 &self.chain_spec().inner,
                 attributes.timestamp,
                 parent.number + 1,
-            ));
+            ),
+        );
 
         let block_env: BlockEnv = BlockEnv {
             number: U256::from(parent.number + 1),
@@ -165,7 +166,7 @@ impl ConfigureEvm for TaikoEvmConfig {
             ommers: &[],
             withdrawals: Some(Cow::Owned(Withdrawals::new(vec![]))),
             basefee_per_gas: ctx.base_fee_per_gas,
-            extra_data: ctx.extra_data.into(),
+            extra_data: ctx.extra_data,
         }
     }
 
@@ -191,4 +192,18 @@ pub struct TaikoNextBlockEnvAttributes {
     pub extra_data: Bytes,
     /// The base fee per gas for the next block.
     pub base_fee_per_gas: u64,
+}
+
+impl BuildPendingEnv<Header> for TaikoNextBlockEnvAttributes {
+    /// Builds a [`ConfigureEvm::NextBlockEnvCtx`] for pending block.
+    fn build_pending_env(parent: &SealedHeader<Header>) -> Self {
+        Self {
+            timestamp: parent.timestamp.saturating_add(12),
+            suggested_fee_recipient: parent.beneficiary,
+            prev_randao: B256::random(),
+            gas_limit: parent.gas_limit,
+            extra_data: parent.extra_data.clone(),
+            base_fee_per_gas: parent.base_fee_per_gas.unwrap_or_default(),
+        }
+    }
 }

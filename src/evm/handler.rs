@@ -37,10 +37,7 @@ pub struct TaikoEvmHandler<CTX, ERROR, FRAME> {
 impl<CTX, ERROR, FRAME> TaikoEvmHandler<CTX, ERROR, FRAME> {
     /// Creates a new instance of [`TaikoEvmHandler`] with the given extra context.
     pub fn new(ctx: Option<TaikoEvmExtraExecutionCtx>) -> Self {
-        Self {
-            _phantom: core::marker::PhantomData,
-            extra_execution_ctx: ctx,
-        }
+        Self { _phantom: core::marker::PhantomData, extra_execution_ctx: ctx }
     }
 }
 
@@ -66,31 +63,39 @@ where
     /// The halt reason type included in the output
     type HaltReason = HaltReason;
 
-    /// Transfers transaction fees to the block beneficiary's account, also transfers the base fee income
-    /// to the network treasury and then share the base fee income with the coinbase based on the
-    /// configuration.
+    /// Transfers transaction fees to the block beneficiary's account, also transfers the base fee
+    /// income to the network treasury and then share the base fee income with the coinbase
+    /// based on the configuration.
     fn reward_beneficiary(
         &self,
         _evm: &mut Self::Evm,
         _exec_result: &mut FrameResult,
     ) -> Result<(), Self::Error> {
-        reward_beneficiary(
-            _evm.ctx(),
-            _exec_result.gas_mut(),
-            self.extra_execution_ctx.clone(),
-        )
-        .map_err(From::from)
+        reward_beneficiary(_evm.ctx(), _exec_result.gas_mut(), self.extra_execution_ctx.clone())
+            .map_err(From::from)
+    }
+
+    #[inline]
+    fn reimburse_caller(
+        &self,
+        evm: &mut Self::Evm,
+        exec_result: &mut <<Self::Evm as EvmTr>::Frame as FrameTr>::FrameResult,
+    ) -> Result<(), Self::Error> {
+        reimburse_caller(evm.ctx(), exec_result.gas(), U256::ZERO, self.extra_execution_ctx.clone())
+            .map_err(From::from)
     }
 
     /// Prepares the EVM state for execution.
     ///
-    /// Loads the beneficiary account (EIP-3651: Warm COINBASE) and all accounts/storage from the access list (EIP-2929).
+    /// Loads the beneficiary account (EIP-3651: Warm COINBASE) and all accounts/storage from the
+    /// access list (EIP-2929).
     ///
     /// Deducts the maximum possible fee from the caller's balance.
     ///
-    /// For EIP-7702 transactions, applies the authorization list and delegates successful authorizations.
-    /// Returns the gas refund amount from EIP-7702. Authorizations are applied before execution begins.
-    /// NOTE: for Anchor transaction, the balance check is disabled, so the caller's balance is not deducted.
+    /// For EIP-7702 transactions, applies the authorization list and delegates successful
+    /// authorizations. Returns the gas refund amount from EIP-7702. Authorizations are applied
+    /// before execution begins. NOTE: for Anchor transaction, the balance check is disabled, so
+    /// the caller's balance is not deducted.
     fn validate_against_state_and_deduct_caller(
         &self,
         evm: &mut Self::Evm,
@@ -99,7 +104,8 @@ where
     }
 }
 
-/// Trait that extends [`Handler`] with inspection functionality, here we just use the default implementation.
+/// Trait that extends [`Handler`] with inspection functionality, here we just use the default
+/// implementation.
 impl<EVM, ERROR> InspectorHandler for TaikoEvmHandler<EVM, ERROR, EthFrame<EthInterpreter>>
 where
     EVM: InspectorEvmTr<
@@ -117,9 +123,10 @@ where
     type IT = EthInterpreter;
 }
 
-/// Transfers transaction fees to the block beneficiary's account, also transfers the base fee income
-/// to the network treasury and then share the base fee income with the coinbase based on the
+/// Transfers transaction fees to the block beneficiary's account, also transfers the base fee
+/// income to the network treasury and then share the base fee income with the coinbase based on the
 /// configuration.
+/// NOTE: if the current transaction is an Anchor transaction, we do not reward the beneficiary.
 #[inline]
 fn reward_beneficiary<CTX: ContextTr>(
     context: &mut CTX,
@@ -131,13 +138,14 @@ fn reward_beneficiary<CTX: ContextTr>(
     let basefee = context.block().basefee() as u128;
     let effective_gas_price = context.tx().effective_gas_price(basefee);
     let coinbase_gas_price = effective_gas_price.saturating_sub(basefee);
-    // Get the caller address and nonce from the transaction, to check if it is an anchor transaction.
+    // Get the caller address and nonce from the transaction, to check if it is an anchor
+    // transaction.
     let tx_caller: Address = context.tx().caller();
     let tx_nonce = context.tx().nonce();
     // Reward beneficiary.
     context.journal_mut().balance_incr(
         beneficiary,
-        U256::from(coinbase_gas_price * (gas.spent() - gas.refunded() as u64) as u128),
+        U256::from(coinbase_gas_price * gas.spent().saturating_sub(gas.refunded() as u64) as u128),
     )?;
 
     // If the extra execution context is provided, which means we are building an L2 block,
@@ -148,29 +156,29 @@ fn reward_beneficiary<CTX: ContextTr>(
             tx_caller, tx_nonce, block_number
         );
 
-        // If the transaction is not an anchor transaction, we share the base fee income with the coinbase and treasury.
-        if ctx.anchor_caller_address() != tx_caller || ctx.anchor_caller_nonce() != tx_nonce {
+        // If the transaction is not an anchor transaction, we share the base fee income with the
+        // coinbase and treasury.
+        if ctx.anchor_caller_address() != tx_caller ||
+            ctx.anchor_caller_nonce() != tx_nonce ||
+            context.tx().kind().to() != Some(&get_treasury_address(context.cfg().chain_id()))
+        {
             // Total base fee income.
             let total_fee = U256::from(basefee * (gas.spent() - gas.refunded() as u64) as u128);
 
             // Share the base fee income with the coinbase and treasury.
-            let fee_coinbase =
-                total_fee.saturating_mul(U256::from(ctx.basefee_share_pctg())) / U256::from(100u64);
+            let fee_coinbase = total_fee.saturating_mul(U256::from(ctx.base_fee_share_pctg())) /
+                U256::from(100u64);
             let fee_treasury = total_fee.saturating_sub(fee_coinbase);
 
-            context
-                .journal_mut()
-                .balance_incr(beneficiary, fee_coinbase)?;
+            context.journal_mut().balance_incr(beneficiary, fee_coinbase)?;
 
             let chain_id = context.cfg().chain_id();
-            context
-                .journal_mut()
-                .balance_incr(get_treasury_address(chain_id), fee_treasury)?;
+            context.journal_mut().balance_incr(get_treasury_address(chain_id), fee_treasury)?;
 
             debug!(
                 target: "taiko_evm",
                 "Share basefee with coinbase: {} and treasury: {}, share percentage: {} at block: {:?}",
-                fee_coinbase, fee_treasury, ctx.basefee_share_pctg(), block_number
+                fee_coinbase, fee_treasury, ctx.base_fee_share_pctg(), block_number
             );
         } else {
             // If the transaction is an anchor transaction, we do not share the base fee income.
@@ -185,7 +193,8 @@ fn reward_beneficiary<CTX: ContextTr>(
 }
 
 /// Prepares the EVM state for execution.
-/// NOTE: for Anchor transaction, the balance check is disabled, so the caller's balance is not deducted.
+/// NOTE: for Anchor transaction, the balance check is disabled, so the caller's balance is not
+/// deducted.
 #[inline]
 pub fn validate_against_state_and_deduct_caller<
     CTX: ContextTr,
@@ -196,12 +205,17 @@ pub fn validate_against_state_and_deduct_caller<
 ) -> Result<(), ERROR> {
     let basefee = context.block().basefee() as u128;
     let blob_price = context.block().blob_gasprice().unwrap_or_default();
-    let mut is_balance_check_disabled = context.cfg().is_balance_check_disabled();
+    let is_balance_check_disabled = context.cfg().is_balance_check_disabled();
     let is_eip3607_disabled = context.cfg().is_eip3607_disabled();
     let is_nonce_check_disabled = context.cfg().is_nonce_check_disabled();
     let block = context.block().number();
+    let chain_id = context.cfg().chain_id();
 
     let (tx, journal) = context.tx_journal_mut();
+
+    // If the extra execution context is provided, which means we are building an L2 block,
+    // we skip the balance check for the anchor transaction.
+    debug!(target: "taiko_evm", "Validating state, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
 
     // Load caller's account.
     let caller_account = journal.load_account_code(tx.caller())?.data;
@@ -213,17 +227,17 @@ pub fn validate_against_state_and_deduct_caller<
         is_nonce_check_disabled,
     )?;
 
-    // If the extra execution context is provided, which means we are building an L2 block,
-    // we skip the balance check for the anchor transaction.
-    if let Some(ctx) = extra_execution_ctx {
-        debug!(target: "taiko_evm", "Validating state, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
-        // If the transaction is an anchor transaction, we disable the balance check.
-        if ctx.anchor_caller_address() == tx.caller() && ctx.anchor_caller_nonce() == tx.nonce() {
-            debug!(target: "taiko_evm", "Anchor transaction detected, disabling balance check, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
-            is_balance_check_disabled = true;
-        } else {
-            debug!(target: "taiko_evm", "Anchor transaction not detected, balance check enabled, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
-        }
+    let is_anchor_transaction = extra_execution_ctx.as_ref().is_some_and(|ctx| {
+        ctx.anchor_caller_address() == tx.caller() &&
+            ctx.anchor_caller_nonce() == tx.nonce() &&
+            tx.kind().to() == Some(&get_treasury_address(chain_id))
+    });
+
+    // If the transaction is an anchor transaction, we disable the balance check.
+    if is_anchor_transaction {
+        debug!(target: "taiko_evm", "Anchor transaction detected, disabling balance check, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
+    } else {
+        debug!(target: "taiko_evm", "Anchor transaction not detected, balance check enabled, sender account: {:?} nonce: {:?} at block: {:?}", tx.caller(), tx.nonce(), block);
     }
 
     // Bump the nonce for calls. Nonce for CREATE will be bumped in `make_create_frame`.
@@ -232,29 +246,32 @@ pub fn validate_against_state_and_deduct_caller<
         caller_account.info.nonce = caller_account.info.nonce.saturating_add(1);
     }
 
-    let max_balance_spending = tx.max_balance_spending()?;
-    let mut new_balance = caller_account.info.balance;
+    let max_balance_spending =
+        if is_anchor_transaction { U256::ZERO } else { tx.max_balance_spending()? };
 
     // Check if account has enough balance for `gas_limit * max_fee`` and value transfer.
     // Transfer will be done inside `*_inner` functions.
-    if is_balance_check_disabled {
-        // Make sure the caller's balance is at least the value of the transaction.
-        new_balance = caller_account.info.balance.max(tx.value());
-    } else if max_balance_spending > caller_account.info.balance {
+    if max_balance_spending > caller_account.info.balance && !is_balance_check_disabled {
         return Err(InvalidTransaction::LackOfFundForMaxFee {
             fee: Box::new(max_balance_spending),
             balance: Box::new(caller_account.info.balance),
         }
         .into());
-    } else {
-        let effective_balance_spending = tx
-            .effective_balance_spending(basefee, blob_price)
-            .expect("effective balance is always smaller than max balance so it can't overflow");
+    }
 
-        // subtracting max balance spending with value that is going to be deducted later in the call.
-        let gas_balance_spending = effective_balance_spending - tx.value();
+    let effective_balance_spending = tx
+        .effective_balance_spending(basefee, blob_price)
+        .expect("effective balance is always smaller than max balance so it can't overflow");
 
-        new_balance = new_balance.saturating_sub(gas_balance_spending);
+    // subtracting max balance spending with value that is going to be deducted later in the call.
+    let gas_balance_spending =
+        if is_anchor_transaction { U256::ZERO } else { effective_balance_spending - tx.value() };
+
+    let mut new_balance = caller_account.info.balance.saturating_sub(gas_balance_spending);
+
+    if is_balance_check_disabled {
+        // Make sure the caller's balance is at least the value of the transaction.
+        new_balance = new_balance.max(tx.value());
     }
 
     let old_balance = caller_account.info.balance;
@@ -263,6 +280,57 @@ pub fn validate_against_state_and_deduct_caller<
     caller_account.info.balance = new_balance;
 
     journal.caller_accounting_journal_entry(tx.caller(), old_balance, tx.kind().is_call());
+    Ok(())
+}
+
+/// Reimburses the caller for unused gas.
+/// NOTE: if the current transaction is an Anchor transaction, we do not reimburse the caller.
+#[inline]
+pub fn reimburse_caller<CTX: ContextTr>(
+    context: &mut CTX,
+    gas: &Gas,
+    additional_refund: U256,
+    extra_execution_ctx: Option<TaikoEvmExtraExecutionCtx>,
+) -> Result<(), <CTX::Db as Database>::Error> {
+    let basefee = context.block().basefee() as u128;
+    let caller = context.tx().caller();
+    let effective_gas_price = context.tx().effective_gas_price(basefee);
+    let chain_id = context.cfg().chain_id();
+    let (tx, _journal) = context.tx_journal_mut();
+
+    if let Some(ctx) = extra_execution_ctx {
+        if ctx.anchor_caller_address() == tx.caller() &&
+            ctx.anchor_caller_nonce() == tx.nonce() &&
+            tx.kind().to() == Some(&get_treasury_address(chain_id))
+        {
+            debug!(
+                target: "taiko_evm",
+                "Anchor transaction detected, no reimbursement, sender account: {:?} nonce: {:?}",
+                caller,
+                tx.nonce()
+            );
+            return Ok(());
+        }
+    }
+
+    debug!(
+        target: "taiko_evm",
+        "Reimbursing caller, sender account: {:?} nonce: {:?}, gas remaining: {}, gas refunded: {}, additional refund: {}",
+        caller,
+        tx.nonce(),
+        gas.remaining(),
+        gas.refunded(),
+        additional_refund
+    );
+
+    // Return balance of not spend gas.
+    context.journal_mut().balance_incr(
+        caller,
+        U256::from(
+            effective_gas_price.saturating_mul((gas.remaining() + gas.refunded() as u64) as u128),
+        ) + additional_refund,
+    )?;
+
     Ok(())
 }
 
@@ -276,9 +344,10 @@ pub fn get_treasury_address(chain_id: u64) -> Address {
     let padding_len = total_len - prefix.len() - suffix.len();
     let padding = "0".repeat(padding_len);
 
-    let hex_str = format!("0x{}{}{}", prefix, padding, suffix);
+    let hex_str = format!("0x{prefix}{padding}{suffix}");
 
-    Address::from_str(&hex_str).unwrap()
+    Address::from_str(&hex_str)
+        .expect("treasury address generation should always produce valid address")
 }
 
 #[cfg(test)]

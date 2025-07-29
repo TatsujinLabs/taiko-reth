@@ -65,7 +65,7 @@ where
         result: &BlockExecutionResult<N::Receipt>,
     ) -> Result<(), ConsensusError> {
         validate_block_post_execution(block, &self.chain_spec, &result.receipts, &result.requests)?;
-        validate_anchor_transaction_in_block::<<N as NodePrimitives>::Block, TaikoChainSpec>(
+        validate_anchor_transaction_in_block::<<N as NodePrimitives>::Block>(
             block,
             &self.chain_spec,
         )
@@ -197,7 +197,9 @@ where
         .iter()
         .any(|&selector| anchor_transaction.input().starts_with(selector))
     {
-        return Err(ConsensusError::Other("First transaction does not have a valid anchor selector".into()));
+        return Err(ConsensusError::Other(
+            "First transaction does not have a valid anchor selector".into(),
+        ));
     }
 
     // Ensure the value is zero.
@@ -236,9 +238,7 @@ where
 
     // Ensure the sender is the treasury address.
     let sender = anchor_transaction.try_recover().map_err(|err| {
-        ConsensusError::Other(format!(
-            "Anchor transaction sender must be recoverable: {err}"
-        ))
+        ConsensusError::Other(format!("Anchor transaction sender must be recoverable: {err}"))
     })?;
     if sender != Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) {
         return Err(ConsensusError::Other(format!(

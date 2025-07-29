@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.0](https://github.com/TatsujinLabs/taiko-reth/compare/v0.1.0...v0.2.0) (2025-07-29)
+
+
+### Features
+
+* **claude:** fix claude workflow and add taiko-reth-developer agent ([#46](https://github.com/TatsujinLabs/taiko-reth/issues/46)) ([b329d93](https://github.com/TatsujinLabs/taiko-reth/commit/b329d9359315ea6fae413416f31a16a4fcc5729a))
+* **consensus:** introduce `validate_anchor_transaction_in_block` for `TaikoBeaconConsensus` ([#47](https://github.com/TatsujinLabs/taiko-reth/issues/47)) ([c22afcb](https://github.com/TatsujinLabs/taiko-reth/commit/c22afcb12fbde4ffc69151aced0a2b8551c09b85))
+
+
+### Chores
+
+* **ci:** build `linux/arm64` images in CI ([#44](https://github.com/TatsujinLabs/taiko-reth/issues/44)) ([e632c49](https://github.com/TatsujinLabs/taiko-reth/commit/e632c49d787fdf4f2aeae4aa96d51003d7f90db0))
+* **ci:** improve `docker-build` workflow ([#42](https://github.com/TatsujinLabs/taiko-reth/issues/42)) ([87c523b](https://github.com/TatsujinLabs/taiko-reth/commit/87c523b13402005b635261cf2375f4789a6e4092))
+* **ci:** revert `docker-build` action updates ([#45](https://github.com/TatsujinLabs/taiko-reth/issues/45)) ([ab588e8](https://github.com/TatsujinLabs/taiko-reth/commit/ab588e80a7738511f10696db09949ae703122bd6))
+* **repo:** bump `reth` dependency to `v1.6.0` ([#16](https://github.com/TatsujinLabs/taiko-reth/issues/16)) ([6852971](https://github.com/TatsujinLabs/taiko-reth/commit/6852971cd530ec47ee0944b7c7d84cb6948cbb1f))
+
 ## [0.1.0](https://github.com/TatsujinLabs/taiko-reth/compare/v0.0.9...v0.1.0) (2025-07-27)
 
 

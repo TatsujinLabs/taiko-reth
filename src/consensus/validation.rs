@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use alloy_consensus::Transaction;
 use alloy_consensus::{BlockHeader as AlloyBlockHeader, EMPTY_OMMER_ROOT_HASH};
 use alloy_hardforks::EthereumHardforks;
+use alloy_primitives::{Address, U256};
 use reth::{
     beacon_consensus::validate_block_post_execution,
     chainspec::EthChainSpec,
@@ -13,10 +15,25 @@ use reth::{
     primitives::SealedBlock,
 };
 use reth_node_api::NodePrimitives;
+use reth_primitives_traits::BlockBody;
+use reth_primitives_traits::SignedTransaction;
 use reth_primitives_traits::{Block, BlockHeader, GotExpected, RecoveredBlock, SealedHeader};
 use reth_provider::BlockExecutionResult;
 
 use crate::chainspec::{hardfork::TaikoHardforks, spec::TaikoChainSpec};
+use crate::evm::alloy::TAIKO_GOLDEN_TOUCH_ADDRESS;
+
+/// anchor(bytes32,bytes32,uint64,uint32)
+pub const ANCHOR_V1_SELECTOR: &[u8] = b"0xda69d3db";
+/// anchorV2(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32))
+pub const ANCHOR_V2_SELECTOR: &[u8] = b"0xfd85eb2d";
+/// anchorV3(uint64,bytes32,uint32,(uint8,uint8,uint32,uint64,uint32),bytes32[])
+pub const ANCHOR_V3_SELECTOR: &[u8] = b"0x48080a45";
+
+/// The gas limit for the anchor transactions before Pacaya hardfork.
+pub const ANCHOR_V1_V2_GAS_LIMIT: u64 = 250_000;
+/// The gas limit for the anchor transactions in Pacaya hardfork blocks.
+pub const ANCHOR_V3_GAS_LIMIT: u64 = 1_000_000;
 
 /// Taiko consensus implementation.
 ///
@@ -46,7 +63,11 @@ where
         block: &RecoveredBlock<N::Block>,
         result: &BlockExecutionResult<N::Receipt>,
     ) -> Result<(), ConsensusError> {
-        validate_block_post_execution(block, &self.chain_spec, &result.receipts, &result.requests)
+        validate_block_post_execution(block, &self.chain_spec, &result.receipts, &result.requests)?;
+        validate_anchor_transaction_in_block::<<N as NodePrimitives>::Block, TaikoChainSpec>(
+            block,
+            &self.chain_spec,
+        )
     }
 }
 
@@ -152,6 +173,77 @@ pub fn validate_against_parent_eip4936_base_fee<
 ) -> Result<(), ConsensusError> {
     if header.base_fee_per_gas().is_none() {
         return Err(ConsensusError::BaseFeeMissing);
+    }
+
+    Ok(())
+}
+
+/// Validates the anchor transaction in the block.
+pub fn validate_anchor_transaction_in_block<B, ChainSpec>(
+    block: &RecoveredBlock<B>,
+    chain_spec: &TaikoChainSpec,
+) -> Result<(), ConsensusError>
+where
+    B: Block,
+    ChainSpec: EthereumHardforks,
+{
+    let anchor_transaction = block
+        .body()
+        .transactions()
+        .first()
+        .ok_or_else(|| ConsensusError::Other("Block has no anchor transaction".into()))?;
+
+    // Ensure the input data starts with one of the anchor selectors.
+    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR)
+        && !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR)
+        && !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
+    {
+        return Err(ConsensusError::Other("Block does not contain an anchor transaction".into()));
+    }
+
+    // Ensure the value is zero.
+    if anchor_transaction.value() != U256::ZERO {
+        return Err(ConsensusError::Other("Anchor transaction value must be zero".into()));
+    }
+
+    // Ensure the gas limit is correct.
+    let gas_limit = if chain_spec.is_pacaya_active_at_block(block.number()) {
+        ANCHOR_V3_GAS_LIMIT
+    } else {
+        ANCHOR_V1_V2_GAS_LIMIT
+    };
+    if anchor_transaction.gas_limit() != gas_limit {
+        return Err(ConsensusError::Other(format!(
+            "Anchor transaction gas limit must be {gas_limit}, got {}",
+            anchor_transaction.gas_limit()
+        )));
+    }
+
+    // Ensure the gas price is equal to the block's base fee, which means
+    // the tip is zero.
+    let anchor_transaction_gas_price = anchor_transaction
+        .gas_price()
+        .ok_or_else(|| ConsensusError::Other("Anchor transaction gas price must be set".into()))?;
+    let block_base_fee = block
+        .header()
+        .base_fee_per_gas()
+        .ok_or_else(|| ConsensusError::Other("Block base fee per gas must be set".into()))?;
+
+    if anchor_transaction_gas_price != block_base_fee as u128 {
+        return Err(ConsensusError::Other(format!(
+            "Anchor transaction gas price must be equal to block base fee, got {anchor_transaction_gas_price}, expected {block_base_fee}"
+        )));
+    }
+
+    // Ensure the sender is the treasury address.
+    let sender = anchor_transaction.try_recover().map_err(|_| {
+        ConsensusError::Other("Anchor transaction sender must be recoverable".into())
+    })?;
+    if sender != Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) {
+        return Err(ConsensusError::Other(format!(
+            "Anchor transaction sender must be the treasury address, got {}",
+            sender
+        )));
     }
 
     Ok(())

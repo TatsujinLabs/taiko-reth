@@ -16,10 +16,7 @@ use reth::revm::{
 use reth_revm::{context::CfgEnv, handler::PrecompileProvider, interpreter::InterpreterResult};
 use tracing::debug;
 
-use crate::{
-    evm::{evm::TaikoEvm, handler::get_treasury_address},
-    revm::spec::TaikoSpecId,
-};
+use crate::evm::{evm::TaikoEvm, handler::get_treasury_address, spec::TaikoSpecId};
 
 pub const TAIKO_GOLDEN_TOUCH_ADDRESS: [u8; 20] = hex!("0x0000777735367b36bc9b61c50022d9d0700db4ec");
 

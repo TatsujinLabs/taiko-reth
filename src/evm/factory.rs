@@ -11,12 +11,10 @@ use reth::revm::{
 use reth_evm::precompiles::PrecompilesMap;
 use reth_revm::precompile::{PrecompileSpecId, Precompiles};
 
-use crate::{
-    evm::{
-        alloy::{TaikoEvmContext, TaikoEvmWrapper},
-        evm::TaikoEvm,
-    },
-    revm::spec::TaikoSpecId,
+use crate::evm::{
+    alloy::{TaikoEvmContext, TaikoEvmWrapper},
+    evm::TaikoEvm,
+    spec::TaikoSpecId,
 };
 
 /// A factory type for creating instances of the Taiko EVM given a certain input.

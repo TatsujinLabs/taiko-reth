@@ -24,8 +24,7 @@ use crate::{
         factory::{TaikoBlockExecutionCtx, TaikoBlockExecutorFactory},
     },
     chainspec::{hardfork::TaikoHardfork, spec::TaikoChainSpec},
-    evm::factory::TaikoEvmFactory,
-    revm::spec::TaikoSpecId,
+    evm::{factory::TaikoEvmFactory, spec::TaikoSpecId},
 };
 
 /// A complete configuration of EVM for Taiko network.

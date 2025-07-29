@@ -194,9 +194,9 @@ where
     };
 
     // Ensure the input data starts with one of the anchor selectors.
-    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR)
-        && !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR)
-        && !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
+    if !anchor_transaction.input().starts_with(ANCHOR_V1_SELECTOR) &&
+        !anchor_transaction.input().starts_with(ANCHOR_V2_SELECTOR) &&
+        !anchor_transaction.input().starts_with(ANCHOR_V3_SELECTOR)
     {
         return Err(ConsensusError::Other("Block does not contain an anchor transaction".into()));
     }

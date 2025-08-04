@@ -57,7 +57,7 @@ impl From<TaikoSpecId> for &'static str {
     }
 }
 
-/// String identifiers for Optimism hardforks
+/// String identifiers for Taiko hardforks
 pub mod name {
     pub const ONTAKE: &str = "Ontake";
     pub const PACAYA: &str = "Pacaya";
@@ -71,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_taiko_spec_id_eth_spec_compatibility() {
-        // Define test cases: (OpSpecId, enabled in ETH specs, enabled in OP specs)
+        // Define test cases: (TaikoSpecId, enabled in ETH specs, enabled in Taiko specs)
         let test_cases = [(
             TaikoSpecId::PACAYA,
             vec![

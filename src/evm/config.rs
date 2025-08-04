@@ -211,7 +211,7 @@ impl BuildPendingEnv<Header> for TaikoNextBlockEnvAttributes {
     }
 }
 
-/// Map the latest active hardfork at the given header to a revm [`SpecId`].
+/// Map the latest active hardfork at the given header to a [`TaikoSpecId`].
 pub fn revm_spec<C>(chain_spec: &C, header: &Header) -> TaikoSpecId
 where
     C: EthereumHardforks + EthChainSpec + Hardforks,
@@ -219,8 +219,8 @@ where
     revm_spec_by_timestamp_and_block_number(chain_spec, header.timestamp, header.number)
 }
 
-/// Map the latest active hardfork at the given timestamp or block number to a revm [`SpecId`].
-pub fn revm_spec_by_timestamp_and_block_number<C>(
+/// Map the latest active hardfork at the given timestamp or block number to a [`TaikoSpecId`].
+pub fn taiko_spec_by_timestamp_and_block_number<C>(
     chain_spec: &C,
     timestamp: u64,
     block_number: u64,

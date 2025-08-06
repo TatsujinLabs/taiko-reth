@@ -120,7 +120,7 @@ impl ConfigureEvm for TaikoEvmConfig {
         attributes: &Self::NextBlockEnvCtx,
     ) -> Result<EvmEnvFor<Self>, Self::Error> {
         let cfg = CfgEnv::new().with_chain_id(self.chain_spec().inner.chain().id()).with_spec(
-            revm_spec_by_timestamp_and_block_number(
+            taiko_spec_by_timestamp_and_block_number(
                 &self.chain_spec().inner,
                 attributes.timestamp,
                 parent.number + 1,
@@ -216,7 +216,7 @@ pub fn revm_spec<C>(chain_spec: &C, header: &Header) -> TaikoSpecId
 where
     C: EthereumHardforks + EthChainSpec + Hardforks,
 {
-    revm_spec_by_timestamp_and_block_number(chain_spec, header.timestamp, header.number)
+    taiko_spec_by_timestamp_and_block_number(chain_spec, header.timestamp, header.number)
 }
 
 /// Map the latest active hardfork at the given timestamp or block number to a [`TaikoSpecId`].

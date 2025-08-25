@@ -230,8 +230,8 @@ where
 
         for (idx, tx) in transactions.into_iter().enumerate() {
             // check transaction signature
-            if *tx.signer() == Address::ZERO {
-                return Err(BlockExecutionError::msg("invalid tx signature"));
+            if idx != 0 && *tx.signer() == Address::ZERO {
+                continue;
             }
             match self.execute_transaction(tx) {
                 // skip `InvalidTx` and `TransactionGasLimitMoreThanAvailableBlockGas`

@@ -233,18 +233,13 @@ where
             if idx != 0 && *tx.signer() == Address::ZERO {
                 continue;
             }
-            match self.execute_transaction(tx) {
-                // skip `InvalidTx` and `TransactionGasLimitMoreThanAvailableBlockGas`
-                Err(BlockExecutionError::Validation(BlockValidationError::InvalidTx {
-                    ..
-                }))
-                | Err(BlockExecutionError::Validation(
+            self.execute_transaction(tx).map(|_| ()).or_else(|err| match err {
+                BlockExecutionError::Validation(BlockValidationError::InvalidTx { .. })
+                | BlockExecutionError::Validation(
                     BlockValidationError::TransactionGasLimitMoreThanAvailableBlockGas { .. },
-                )) if idx != 0 => {
-                    continue;
-                }
-                res => res?,
-            };
+                ) if idx != 0 => Ok(()),
+                _ => Err(err),
+            })?;
         }
 
         self.apply_post_execution_changes()

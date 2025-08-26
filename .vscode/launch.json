@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "codelldb",
+      "request": "launch",
+      "name": "Debug taiko-reth",
+      "program": "${workspaceFolder}/target/debug/taiko-reth",
+      "args": ["${input:rethArgs}"],
+      "cwd": "${workspaceFolder}",
+      "stopOnEntry": false,
+      "env": {
+        "RUST_BACKTRACE": "1"
+      }
+    },
+    {
+      "type": "codelldb",
+      "request": "attach",
+      "name": "Attach to running taiko-reth",
+      "program": "${workspaceFolder}/target/debug/taiko-reth",
+      "pid": "${command:pickProcess}"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "rethArgs",
+      "type": "promptString",
+      "description": "Enter arguments for taiko-reth",
+      "default": "node"
+    }
+  ]
+}

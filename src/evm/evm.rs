@@ -173,7 +173,7 @@ mod test {
         interpreter::Host, state::AccountInfo,
     };
 
-    use crate::evm::{alloy::TAIKO_GOLDEN_TOUCH_ADDRESS, handler::get_treasury_address};
+    use crate::evm::{alloy::TAIKO_GOLDEN_TOUCH_ADDRESS, handler::get_anchor_address};
 
     use super::*;
 
@@ -218,7 +218,7 @@ mod test {
                 .gas_limit(1_000_000)
                 .gas_price(1)
                 .caller(golden_touch_address)
-                .to(get_treasury_address(taiko_evm.ctx_ref().chain_id().to()))
+                .to(get_anchor_address(taiko_evm.ctx_ref().chain_id().to()))
                 .nonce(nonce + 1)
                 .build()
                 .unwrap(),

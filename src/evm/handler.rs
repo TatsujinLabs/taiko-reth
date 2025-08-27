@@ -160,7 +160,7 @@ fn reward_beneficiary<CTX: ContextTr>(
         // coinbase and treasury.
         if ctx.anchor_caller_address() != tx_caller ||
             ctx.anchor_caller_nonce() != tx_nonce ||
-            context.tx().kind().to() != Some(&get_treasury_address(context.cfg().chain_id()))
+            context.tx().kind().to() != Some(&get_anchor_address(context.cfg().chain_id()))
         {
             // Total base fee income.
             let total_fee = U256::from(basefee * (gas.spent() - gas.refunded() as u64) as u128);
@@ -230,7 +230,7 @@ pub fn validate_against_state_and_deduct_caller<
     let is_anchor_transaction = extra_execution_ctx.as_ref().is_some_and(|ctx| {
         ctx.anchor_caller_address() == tx.caller() &&
             ctx.anchor_caller_nonce() == tx.nonce() &&
-            tx.kind().to() == Some(&get_treasury_address(chain_id))
+            tx.kind().to() == Some(&get_anchor_address(chain_id))
     });
 
     // If the transaction is an anchor transaction, we disable the balance check.
@@ -301,7 +301,7 @@ pub fn reimburse_caller<CTX: ContextTr>(
     if let Some(ctx) = extra_execution_ctx {
         if ctx.anchor_caller_address() == tx.caller() &&
             ctx.anchor_caller_nonce() == tx.nonce() &&
-            tx.kind().to() == Some(&get_treasury_address(chain_id))
+            tx.kind().to() == Some(&get_anchor_address(chain_id))
         {
             debug!(
                 target: "taiko_evm",
@@ -336,7 +336,7 @@ pub fn reimburse_caller<CTX: ContextTr>(
 
 /// Generates the network treasury address based on the chain ID.
 #[inline]
-pub fn get_treasury_address(chain_id: u64) -> Address {
+pub fn get_anchor_address(chain_id: u64) -> Address {
     let prefix = chain_id.to_string();
     let suffix = "10001";
 
@@ -350,13 +350,42 @@ pub fn get_treasury_address(chain_id: u64) -> Address {
         .expect("treasury address generation should always produce valid address")
 }
 
+/// Generates the network treasury address based on the chain ID.
+#[inline]
+#[cfg(not(feature = "burn-protocol-fee"))]
+pub fn get_treasury_address(chain_id: u64) -> Address {
+    get_anchor_address(chain_id)
+}
+
+#[inline]
+#[cfg(feature = "burn-protocol-fee")]
+// Burning protocol fee
+pub fn get_treasury_address(_: u64) -> Address {
+    Address::ZERO
+}
+
 #[cfg(test)]
 mod test {
+
     use super::*;
+
+    #[test]
+    fn test_get_anchor_address() {
+        let treasury = get_anchor_address(167000);
+        assert_eq!(
+            treasury,
+            Address::from_str("0x1670000000000000000000000000000000010001").unwrap()
+        );
+    }
 
     #[test]
     fn test_get_treasury_address() {
         let treasury = get_treasury_address(167000);
+
+        #[cfg(feature = "burn-protocol-fee")]
+        assert_eq!(treasury, Address::ZERO);
+
+        #[cfg(not(feature = "burn-protocol-fee"))]
         assert_eq!(
             treasury,
             Address::from_str("0x1670000000000000000000000000000000010001").unwrap()

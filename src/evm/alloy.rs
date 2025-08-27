@@ -16,7 +16,7 @@ use reth::revm::{
 use reth_revm::{context::CfgEnv, handler::PrecompileProvider, interpreter::InterpreterResult};
 use tracing::debug;
 
-use crate::evm::{evm::TaikoEvm, handler::get_treasury_address, spec::TaikoSpecId};
+use crate::evm::{evm::TaikoEvm, handler::get_anchor_address, spec::TaikoSpecId};
 
 pub const TAIKO_GOLDEN_TOUCH_ADDRESS: [u8; 20] = hex!("0x0000777735367b36bc9b61c50022d9d0700db4ec");
 
@@ -149,7 +149,7 @@ where
         // NOTE: we use this workaround to mark the Anchor transaction and base fee share percentage
         // in this block.
         if caller == Address::from(TAIKO_GOLDEN_TOUCH_ADDRESS) &&
-            contract == get_treasury_address(self.chain_id())
+            contract == get_anchor_address(self.chain_id())
         {
             let (base_fee_share_pctg, caller_nonce) = decode_anchor_system_call_data(&data)
                 .ok_or(EVMError::Custom("invalid encoded anchor system call data".to_string()))?;

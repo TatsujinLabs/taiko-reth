@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/TatsujinLabs/taiko-reth/compare/v0.2.0...v0.3.0) (2025-08-29)
+
+
+### Features
+
+* **evm:** add `burn-protocol-fee` feature ([#61](https://github.com/TatsujinLabs/taiko-reth/issues/61)) ([f822c31](https://github.com/TatsujinLabs/taiko-reth/commit/f822c31a40635a6217a7e9698f71e03769d4cbda))
+
 ## [0.2.0](https://github.com/TatsujinLabs/taiko-reth/compare/v0.1.0...v0.2.0) (2025-08-25)
 
 
